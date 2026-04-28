@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MoreHorizontal, Plus, Search, Users } from "lucide-react";
+import { Edit, MoreHorizontal, Plus, Search, Users } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,10 @@ function date(value?: string) {
   return value ? new Date(value).toLocaleString() : "—";
 }
 
+function isOrganizationAccount(account?: CreditAccount | null) {
+  return String(account?.account_type ?? "").trim().toLowerCase() === "organization";
+}
+
 async function getCreditAccounts(params: Record<string, unknown>): Promise<PaginatedResponse<CreditAccount>> {
   const response = await api.get("/credit/accounts", { params: clean(params) });
   const body = response.data;
@@ -46,6 +50,11 @@ async function getCreditAccounts(params: Record<string, unknown>): Promise<Pagin
 
 async function createCreditAccount(payload: CreditAccountPayload) {
   const response = await api.post("/credit/accounts", payload);
+  return response.data;
+}
+
+async function updateCreditAccount(id: string | number, payload: CreditAccountPayload) {
+  const response = await api.put(`/credit/accounts/${id}`, payload);
   return response.data;
 }
 
@@ -64,33 +73,52 @@ const emptyForm = {
   requires_approval: "0",
 };
 
+type FormState = typeof emptyForm;
+
+function formFromAccount(account: CreditAccount): FormState {
+  return {
+    name: account.name ?? "",
+    account_type: String(account.account_type ?? "organization").toLowerCase(),
+    credit_limit: String(account.credit_limit ?? 0),
+    settlement_cycle: String(account.settlement_cycle ?? "monthly").toLowerCase(),
+    status: String(account.status ?? "active").toLowerCase(),
+    is_credit_enabled: account.is_credit_enabled ? "1" : "0",
+    requires_approval: account.requires_approval ? "1" : "0",
+  };
+}
+
 export default function CreditAccountsPage() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({ page: 1, per_page: 10, search: "", account_type: "all", status: "all" });
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [editing, setEditing] = useState<CreditAccount | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm);
 
   const query = useQuery({ queryKey: ["credit-accounts-page", filters], queryFn: () => getCreditAccounts(filters) });
   const rows = query.data?.data ?? [];
   const meta = query.data?.meta;
 
-  const createMutation = useMutation({
-    mutationFn: () => createCreditAccount({
-      name: form.name,
-      account_type: form.account_type,
-      credit_limit: Number(form.credit_limit || 0),
-      settlement_cycle: form.settlement_cycle,
-      status: form.status,
-      is_credit_enabled: form.is_credit_enabled === "1",
-      requires_approval: false,
-    }),
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const payload: CreditAccountPayload = {
+        name: form.name,
+        account_type: form.account_type,
+        credit_limit: Number(form.credit_limit || 0),
+        settlement_cycle: form.settlement_cycle,
+        status: form.status,
+        is_credit_enabled: form.is_credit_enabled === "1",
+        requires_approval: false,
+      };
+      return editing ? updateCreditAccount(editing.id, payload) : createCreditAccount(payload);
+    },
     onSuccess: () => {
-      toast.success("Credit account created");
+      toast.success(editing ? "Credit account updated" : "Credit account created");
       setOpen(false);
+      setEditing(null);
       setForm(emptyForm);
       queryClient.invalidateQueries({ queryKey: ["credit-accounts-page"] });
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create credit account"),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to save credit account"),
   });
 
   const toggleMutation = useMutation({
@@ -112,6 +140,18 @@ export default function CreditAccountsPage() {
 
   const updateFilter = (patch: Partial<typeof filters>) => setFilters((current) => ({ ...current, ...patch, page: 1 }));
 
+  function openCreate() {
+    setEditing(null);
+    setForm(emptyForm);
+    setOpen(true);
+  }
+
+  function openEdit(account: CreditAccount) {
+    setEditing(account);
+    setForm(formFromAccount(account));
+    setOpen(true);
+  }
+
   function submit() {
     if (!form.name.trim()) {
       toast.error("Account name is required");
@@ -121,7 +161,7 @@ export default function CreditAccountsPage() {
       toast.error("Credit limit cannot be negative");
       return;
     }
-    createMutation.mutate();
+    saveMutation.mutate();
   }
 
   return (
@@ -131,7 +171,7 @@ export default function CreditAccountsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Credit Accounts</h1>
           <p className="text-muted-foreground">Create and manage customer, staff, student, and organization credit accounts used during cashier credit orders.</p>
         </div>
-        <Button onClick={() => setOpen(true)}>
+        <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" /> New credit account
         </Button>
       </div>
@@ -179,77 +219,45 @@ export default function CreditAccountsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Limit</TableHead>
-                  <TableHead>Balance</TableHead>
-                  <TableHead>Available</TableHead>
-                  <TableHead>Cycle</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Limit</TableHead><TableHead>Balance</TableHead><TableHead>Available</TableHead><TableHead>Cycle</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {query.isLoading ? (
-                  <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">Loading credit accounts...</TableCell></TableRow>
-                ) : rows.length ? rows.map((account) => {
+                {query.isLoading ? <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">Loading credit accounts...</TableCell></TableRow> : rows.length ? rows.map((account) => {
                   const limit = Number(account.credit_limit ?? 0);
                   const balance = Number(account.current_balance ?? 0);
                   const available = Math.max(0, limit - balance);
-                  const isOrganization = String(account.account_type) === "organization";
+                  const organization = isOrganizationAccount(account);
                   return (
                     <TableRow key={account.id}>
-                      <TableCell>
-                        <div className="font-medium">{account.name}</div>
-                        <div className="text-xs text-muted-foreground">Created {date(account.created_at)}</div>
-                      </TableCell>
+                      <TableCell><div className="font-medium">{account.name}</div><div className="text-xs text-muted-foreground">Created {date(account.created_at)}</div></TableCell>
                       <TableCell className="capitalize">{String(account.account_type ?? "—")}</TableCell>
-                      <TableCell>{money(limit)}</TableCell>
-                      <TableCell>{money(balance)}</TableCell>
-                      <TableCell>{money(available)}</TableCell>
+                      <TableCell>{money(limit)}</TableCell><TableCell>{money(balance)}</TableCell><TableCell>{money(available)}</TableCell>
                       <TableCell className="capitalize">{account.settlement_cycle ?? "monthly"}</TableCell>
-                      <TableCell>
-                        <Badge variant={account.status === "active" ? "outline" : "destructive"} className="capitalize">{account.status ?? "active"}</Badge>
-                        <div className="text-xs text-muted-foreground">{account.is_credit_enabled ? "Credit enabled" : "Credit disabled"}</div>
-                      </TableCell>
+                      <TableCell><Badge variant={account.status === "active" ? "outline" : "destructive"} className="capitalize">{account.status ?? "active"}</Badge><div className="text-xs text-muted-foreground">{account.is_credit_enabled ? "Credit enabled" : "Credit disabled"}</div></TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu modal={false}>
                           <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {isOrganization && (
-                              <DropdownMenuItem asChild>
-                                <Link href={`/dashboard/credit-accounts/${account.id}`}>
-                                  <Users className="mr-2 h-4 w-4" /> Manage authorized users
-                                </Link>
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem onClick={() => toggleMutation.mutate(account.id)}>
-                              {account.status === "blocked" || !account.is_credit_enabled ? "Unblock / enable" : "Block / disable"}
-                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEdit(account)}><Edit className="mr-2 h-4 w-4" /> Edit account</DropdownMenuItem>
+                            {organization && <DropdownMenuItem asChild><Link href={`/dashboard/credit-accounts/${account.id}`}><Users className="mr-2 h-4 w-4" /> Manage authorized users</Link></DropdownMenuItem>}
+                            <DropdownMenuItem onClick={() => toggleMutation.mutate(account.id)}>{account.status === "blocked" || !account.is_credit_enabled ? "Unblock / enable" : "Block / disable"}</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   );
-                }) : (
-                  <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">No credit accounts found. Create one to allow credit orders.</TableCell></TableRow>
-                )}
+                }) : <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">No credit accounts found. Create one to allow credit orders.</TableCell></TableRow>}
               </TableBody>
             </Table>
           </div>
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Page {meta?.current_page ?? 1} of {meta?.last_page ?? 1}</p>
-            <div className="flex gap-2">
-              <Button variant="outline" disabled={(meta?.current_page ?? 1) <= 1} onClick={() => setFilters({ ...filters, page: Math.max(1, filters.page - 1) })}>Previous</Button>
-              <Button variant="outline" disabled={(meta?.current_page ?? 1) >= (meta?.last_page ?? 1)} onClick={() => setFilters({ ...filters, page: filters.page + 1 })}>Next</Button>
-            </div>
-          </div>
+          <div className="mt-4 flex items-center justify-between"><p className="text-sm text-muted-foreground">Page {meta?.current_page ?? 1} of {meta?.last_page ?? 1}</p><div className="flex gap-2"><Button variant="outline" disabled={(meta?.current_page ?? 1) <= 1} onClick={() => setFilters({ ...filters, page: Math.max(1, filters.page - 1) })}>Previous</Button><Button variant="outline" disabled={(meta?.current_page ?? 1) >= (meta?.last_page ?? 1)} onClick={() => setFilters({ ...filters, page: filters.page + 1 })}>Next</Button></div></div>
         </CardContent>
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Create credit account</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? "Edit credit account" : "Create credit account"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2"><Label>Account name</Label><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Example: Municipality, ICT Department" /></div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -260,7 +268,7 @@ export default function CreditAccountsPage() {
               <div className="space-y-2"><Label>Credit enabled</Label><Select value={form.is_credit_enabled} onValueChange={(is_credit_enabled) => setForm({ ...form, is_credit_enabled })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="1">Yes</SelectItem><SelectItem value="0">No</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label>Requires approval</Label><Select value={form.requires_approval} onValueChange={(requires_approval) => setForm({ ...form, requires_approval })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="0">No</SelectItem></SelectContent></Select></div>
             </div>
-            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button disabled={createMutation.isPending} onClick={submit}>Save account</Button></div>
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button disabled={saveMutation.isPending} onClick={submit}>{editing ? "Update account" : "Save account"}</Button></div>
           </div>
         </DialogContent>
       </Dialog>
