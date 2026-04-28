@@ -38,6 +38,11 @@ function accountUsers(account?: CreditAccount | null): CreditAccountUser[] {
   return [];
 }
 
+function isActiveAuthorizedUser(user: CreditAccountUser) {
+  const raw = (user as any).is_active;
+  return raw === undefined || raw === null || raw === true || raw === 1 || raw === "1";
+}
+
 async function getAuthorizedUsers(accountId?: string | number) {
   if (!accountId) return [];
   const response = await api.get(`/credit/accounts/${accountId}/users`, { params: { active: 1, per_page: 100 } });
@@ -73,7 +78,7 @@ export function CashierCreditCreateOrderPage() {
   const authorizedUsersQuery = useQuery({
     queryKey: ["credit-account-authorized-users", payload.credit_account_id],
     queryFn: () => getAuthorizedUsers(payload.credit_account_id),
-    enabled: Boolean(payload.credit_account_id),
+    enabled: isCredit && Boolean(payload.credit_account_id),
   });
 
   const create = useCreateOrderMutation("cashier", () => {
@@ -87,9 +92,22 @@ export function CashierCreditCreateOrderPage() {
   const creditAccounts = creditAccountsQuery.data?.data ?? [];
 
   const selectedCreditAccount = creditAccounts.find((account) => String(account.id) === String(payload.credit_account_id));
-  const usersFromAccount = accountUsers(selectedCreditAccount);
-  const usersFromEndpoint = authorizedUsersQuery.data ?? [];
-  const authorizedUsers = usersFromAccount.length ? usersFromAccount : usersFromEndpoint;
+  const usersFromAccount = accountUsers(selectedCreditAccount).filter(isActiveAuthorizedUser);
+  const usersFromEndpoint = (authorizedUsersQuery.data ?? []).filter(isActiveAuthorizedUser);
+  const authorizedUsers = usersFromEndpoint.length ? usersFromEndpoint : usersFromAccount;
+  const mustChooseAuthorizedUser = isCredit && Boolean(payload.credit_account_id) && authorizedUsers.length > 0;
+
+  useEffect(() => {
+    if (!isCredit || !payload.credit_account_id || payload.credit_account_user_id || !authorizedUsers.length) return;
+
+    const firstUser = authorizedUsers[0];
+    if (!firstUser?.id) return;
+
+    setPayload((current) => {
+      if (String(current.credit_account_id) !== String(payload.credit_account_id) || current.credit_account_user_id) return current;
+      return { ...current, credit_account_user_id: String(firstUser.id) };
+    });
+  }, [isCredit, payload.credit_account_id, payload.credit_account_user_id, authorizedUsers]);
 
   const creditLimit = Number(selectedCreditAccount?.credit_limit ?? 0);
   const currentBalance = Number(selectedCreditAccount?.current_balance ?? 0);
@@ -105,7 +123,7 @@ export function CashierCreditCreateOrderPage() {
     items.length > 0 &&
     (!needsTable || Boolean(payload.table_id)) &&
     Boolean(payload.waiter_id) &&
-    (!isCredit || (Boolean(payload.credit_account_id) && Boolean(payload.credit_account_user_id) && total <= remainingLimit));
+    (!isCredit || (Boolean(payload.credit_account_id) && (!mustChooseAuthorizedUser || Boolean(payload.credit_account_user_id)) && total <= remainingLimit));
 
   function addItem(id: string | number) {
     setItems((current) => {
@@ -133,7 +151,7 @@ export function CashierCreditCreateOrderPage() {
       waiter_id: payload.waiter_id,
       payment_type: payload.payment_type as any,
       credit_account_id: isCredit ? payload.credit_account_id : null,
-      credit_account_user_id: isCredit ? payload.credit_account_user_id : null,
+      credit_account_user_id: isCredit && payload.credit_account_user_id ? payload.credit_account_user_id : null,
       credit_notes: payload.credit_notes,
       notes: payload.notes,
       items,
@@ -218,15 +236,17 @@ export function CashierCreditCreateOrderPage() {
 
                   <div className="space-y-2 md:col-span-2">
                     <Label>Authorized user / person</Label>
-                    <Select value={payload.credit_account_user_id} onValueChange={(credit_account_user_id) => setPayload((p) => ({ ...p, credit_account_user_id }))} disabled={!payload.credit_account_id || authorizedUsersQuery.isLoading}>
-                      <SelectTrigger><SelectValue placeholder={!payload.credit_account_id ? "Choose credit account first" : authorizedUsersQuery.isLoading ? "Loading authorized users..." : "Choose authorized user"} /></SelectTrigger>
+                    <Select value={payload.credit_account_user_id} onValueChange={(credit_account_user_id) => setPayload((p) => ({ ...p, credit_account_user_id }))} disabled={!payload.credit_account_id || authorizedUsersQuery.isLoading || !authorizedUsers.length}>
+                      <SelectTrigger><SelectValue placeholder={!payload.credit_account_id ? "Choose credit account first" : authorizedUsersQuery.isLoading ? "Loading authorized users..." : authorizedUsers.length ? "Choose authorized user" : "No active authorized users"} /></SelectTrigger>
                       <SelectContent>
                         {authorizedUsers.length ? authorizedUsers.map((user) => (
                           <SelectItem key={user.id} value={String(user.id)}>{user.full_name}{user.phone ? ` • ${user.phone}` : ""}{user.position ? ` • ${user.position}` : ""}</SelectItem>
                         )) : <SelectItem value="none" disabled>{authorizedUsersQuery.isLoading ? "Loading authorized users..." : "No active authorized users found"}</SelectItem>}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">Select the person using this credit account.</p>
+                    <p className="text-xs text-muted-foreground">
+                      {authorizedUsers.length ? "Active authorized users are loaded from this credit account." : "If this is an organization credit account, add active authorized users from Credit Accounts first."}
+                    </p>
                   </div>
 
                   <div className="rounded-xl border p-3 text-sm md:col-span-2">
@@ -301,7 +321,7 @@ export function CashierCreditCreateOrderPage() {
 
             <div className="flex justify-between rounded-xl bg-muted p-4 text-lg font-semibold"><span>Total</span><span>{money(total)}</span></div>
             {!payload.waiter_id && <p className="text-sm text-muted-foreground">Select the responsible waiter before creating the order.</p>}
-            {isCredit && payload.credit_account_id && !payload.credit_account_user_id && <p className="text-sm text-destructive">Select the authorized person before creating this credit order.</p>}
+            {isCredit && mustChooseAuthorizedUser && !payload.credit_account_user_id && <p className="text-sm text-destructive">Select the authorized person before creating this credit order.</p>}
             <Button className="w-full" disabled={!canSubmit || create.isPending} onClick={submit}>Submit order</Button>
           </CardContent>
         </Card>
