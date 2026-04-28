@@ -7,8 +7,21 @@ use Illuminate\Database\Eloquent\Model;
 class CreditOrder extends Model
 {
     protected $fillable = [
-        'order_id','bill_id','credit_account_id','credit_reference','total_amount','paid_amount','remaining_amount',
-        'status','approved_by','approved_at','due_date','notes',
+        'order_id',
+        'bill_id',
+        'credit_account_id',
+        'credit_account_user_id',
+        'used_by_name',
+        'used_by_phone',
+        'credit_reference',
+        'total_amount',
+        'paid_amount',
+        'remaining_amount',
+        'status',
+        'approved_by',
+        'approved_at',
+        'due_date',
+        'notes',
     ];
 
     protected $casts = [
@@ -20,6 +33,8 @@ class CreditOrder extends Model
     ];
 
     public function account() { return $this->belongsTo(CreditAccount::class, 'credit_account_id'); }
+    public function authorizedUser() { return $this->belongsTo(CreditAccountUser::class, 'credit_account_user_id'); }
+    public function creditAccountUser() { return $this->belongsTo(CreditAccountUser::class, 'credit_account_user_id'); }
     public function order() { return $this->belongsTo(Order::class); }
     public function bill() { return $this->belongsTo(Bill::class); }
     public function settlements() { return $this->hasMany(CreditSettlement::class); }
