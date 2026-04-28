@@ -23,6 +23,7 @@ class RolesPermissionsSeeder extends Seeder
             'permissions.read',
             'audit.read',
             'settings.update',
+            'settings.update',
 
             'menu.read', 'menu.create', 'menu.update', 'menu.disable',
 
