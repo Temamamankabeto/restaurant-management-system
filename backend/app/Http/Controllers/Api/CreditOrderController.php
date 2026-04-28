@@ -22,7 +22,9 @@ class CreditOrderController extends Controller
     {
         $this->requirePermission($request, 'credit.accounts.read');
 
-        $q = CreditAccount::query()->latest();
+        $q = CreditAccount::query()
+            ->with(['authorizedUsers' => fn ($query) => $query->where('is_active', true)->orderBy('full_name')])
+            ->latest();
 
         if ($request->filled('search')) {
             $s = trim((string) $request->search);
@@ -88,7 +90,7 @@ class CreditOrderController extends Controller
     {
         $this->requirePermission($request, 'credit.accounts.read');
 
-        $account = CreditAccount::with(['creditOrders.order','creditOrders.bill'])->findOrFail($id);
+        $account = CreditAccount::with(['authorizedUsers', 'creditOrders.order','creditOrders.bill'])->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -192,7 +194,7 @@ class CreditOrderController extends Controller
     {
         $this->requirePermission($request, 'credit.orders.read');
 
-        $q = CreditOrder::with(['account','order','bill'])->latest();
+        $q = CreditOrder::with(['account','authorizedUser','order','bill'])->latest();
 
         if ($request->filled('status')) {
             $q->where('status', $request->status);
@@ -207,6 +209,7 @@ class CreditOrderController extends Controller
 
             $q->where(fn($x) => $x
                 ->where('credit_reference', 'like', "%{$s}%")
+                ->orWhere('used_by_name', 'like', "%{$s}%")
                 ->orWhereHas('order', fn($o) => $o->where('order_number', 'like', "%{$s}%"))
                 ->orWhereHas('account', fn($a) => $a->where('name', 'like', "%{$s}%"))
             );
@@ -234,6 +237,7 @@ class CreditOrderController extends Controller
             'success' => true,
             'data' => CreditOrder::with([
                 'account',
+                'authorizedUser',
                 'order.items.menuItem',
                 'bill',
                 'settlements.receiver',
@@ -248,6 +252,7 @@ class CreditOrderController extends Controller
 
         $data = $request->validate([
             'credit_account_id' => 'required|exists:credit_accounts,id',
+            'credit_account_user_id' => 'nullable|exists:credit_account_users,id',
             'due_date' => 'nullable|date',
             'notes' => 'nullable|string|max:1000',
             'override_limit' => 'sometimes|boolean',
@@ -263,7 +268,8 @@ class CreditOrderController extends Controller
             (int) $request->user()->id,
             $data['due_date'] ?? null,
             $data['notes'] ?? null,
-            (bool) ($data['override_limit'] ?? false)
+            (bool) ($data['override_limit'] ?? false),
+            !empty($data['credit_account_user_id']) ? (int) $data['credit_account_user_id'] : null
         );
 
         return response()->json([
@@ -271,44 +277,6 @@ class CreditOrderController extends Controller
             'message' => 'Credit order created successfully.',
             'data' => $creditOrder,
         ], 201);
-    }
-
-    public function approve(Request $request, $id)
-    {
-        $this->requirePermission($request, 'credit.orders.approve');
-
-        $data = $request->validate([
-            'note' => 'nullable|string|max:1000',
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Credit order approved.',
-            'data' => $this->creditOrderService->approve(
-                CreditOrder::findOrFail($id),
-                (int) $request->user()->id,
-                $data['note'] ?? null
-            ),
-        ]);
-    }
-
-    public function reject(Request $request, $id)
-    {
-        $this->requirePermission($request, 'credit.orders.approve');
-
-        $data = $request->validate([
-            'note' => 'nullable|string|max:1000',
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Credit order blocked/rejected.',
-            'data' => $this->creditOrderService->reject(
-                CreditOrder::findOrFail($id),
-                (int) $request->user()->id,
-                $data['note'] ?? null
-            ),
-        ]);
     }
 
     public function settle(Request $request, $id)
