@@ -1,2 +1,2 @@
-import { RoleAwareCreateOrderPage } from '@/components/order-management';
+import { RoleAwareCreateOrderPage } from '@/components/order-management/cashier-credit-create-order-page';
 export default function Page() { return <RoleAwareCreateOrderPage />; }
