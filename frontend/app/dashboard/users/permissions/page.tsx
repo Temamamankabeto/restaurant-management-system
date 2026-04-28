@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { permissionSchema } from "@/lib/user-management/permission.schema";
 import { useCreatePermissionMutation, useDeletePermissionMutation, useUpdatePermissionMutation } from "@/mutations/user-management/permission.mutation";
 import { usePermissionsQuery } from "@/queries/user-management/permission.query";
-import type { PermissionItem } from "@/types/user-management/user.type";
+import type { PermissionItem, PermissionPayload } from "@/types/user-management/user.type";
 
 function moduleName(permission: string) {
   return permission.split(/[._:-]/)[0] || "general";
@@ -55,7 +55,8 @@ export default function PermissionsPage() {
 
   function submitPermission(event: FormEvent) {
     event.preventDefault();
-    const payload = permissionSchema.parse({ name });
+    const parsed = permissionSchema.parse({ name });
+    const payload: PermissionPayload = { name: parsed.name };
     if (selectedPermission) updatePermission.mutate({ id: selectedPermission.id, payload });
     else createPermission.mutate(payload);
   }
