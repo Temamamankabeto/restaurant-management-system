@@ -21,6 +21,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/credit/orders', [CreditOrderController::class, 'orders']);
     Route::get('/credit/orders/{id}', [CreditOrderController::class, 'showOrder']);
     Route::post('/credit/bills/{billId}/convert', [CreditOrderController::class, 'createFromBill']);
+    Route::post('/credit/orders/{id}/approve', [CreditOrderController::class, 'approve']);
+    Route::post('/credit/orders/{id}/reject', [CreditOrderController::class, 'reject']);
     Route::post('/credit/orders/{id}/settlements', [CreditOrderController::class, 'settle']);
 
     Route::get('/credit/reports/summary', [CreditOrderController::class, 'reportsSummary']);
