@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { roleSchema } from "@/lib/user-management/role.schema";
 import { useAssignRolePermissionsMutation, useCreateRoleMutation, useUpdateRoleMutation } from "@/mutations/user-management/role.mutation";
 import { useRolePermissionCatalogQuery, useRolePermissionsQuery, useRolesQuery } from "@/queries/user-management/role.query";
-import type { RoleItem } from "@/types/user-management/user.type";
+import type { RoleItem, RolePayload } from "@/types/user-management/user.type";
 
 function moduleName(permission: string) {
   return permission.split(/[._:-]/)[0] || "general";
@@ -80,7 +80,8 @@ export default function RolesPage() {
 
   function submitRole(event: FormEvent) {
     event.preventDefault();
-    const payload = roleSchema.parse({ name: roleName });
+    const parsed = roleSchema.parse({ name: roleName });
+    const payload: RolePayload = { name: parsed.name };
     if (selectedRole) updateRole.mutate({ id: selectedRole.id, payload });
     else createRole.mutate(payload);
   }
