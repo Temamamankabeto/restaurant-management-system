@@ -279,6 +279,44 @@ class CreditOrderController extends Controller
         ], 201);
     }
 
+    public function approve(Request $request, $id)
+    {
+        $this->requirePermission($request, 'credit.orders.approve');
+
+        $order = CreditOrder::findOrFail($id);
+
+        if ($order->status === 'credit_pending') {
+            $order->update(['status' => 'credit_approved']);
+            $order->bill?->update(['credit_status' => 'credit_approved']);
+            $order->order?->update(['credit_status' => 'credit_approved']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Credit order approved.',
+            'data' => $order->fresh(['account','authorizedUser','order','bill']),
+        ]);
+    }
+
+    public function reject(Request $request, $id)
+    {
+        $this->requirePermission($request, 'credit.orders.approve');
+
+        $order = CreditOrder::findOrFail($id);
+
+        if ($order->status === 'credit_pending') {
+            $order->update(['status' => 'blocked']);
+            $order->bill?->update(['credit_status' => 'blocked']);
+            $order->order?->update(['credit_status' => 'blocked']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Credit order rejected.',
+            'data' => $order->fresh(['account','authorizedUser','order','bill']),
+        ]);
+    }
+
     public function settle(Request $request, $id)
     {
         $this->requirePermission($request, 'credit.orders.settle');

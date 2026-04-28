@@ -14,9 +14,17 @@ class CreditAccountUserController extends Controller
         abort_unless($request->user()?->can($permission), 403, 'You are not authorized to perform this credit action.');
     }
 
+    private function requireAnyPermission(Request $request, array $permissions): void
+    {
+        $user = $request->user();
+        abort_unless($user && collect($permissions)->contains(fn ($permission) => $user->can($permission)), 403, 'You are not authorized to perform this credit action.');
+    }
+
     public function index(Request $request, $accountId)
     {
-        $this->requirePermission($request, 'credit.accounts.read');
+        // Finance/Admin need credit.accounts.read. Cashier POS can also read authorized users
+        // because cashier needs the list to create an organization credit order.
+        $this->requireAnyPermission($request, ['credit.accounts.read', 'credit.orders.create', 'orders.create']);
 
         $account = CreditAccount::findOrFail($accountId);
 
