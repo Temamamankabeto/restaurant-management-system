@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Order;
+use App\Models\CreditAccount;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -26,6 +27,7 @@ class StoreOrderRequest extends FormRequest
             'discount' => ['nullable', 'numeric', 'min:0'],
             'payment_type' => ['nullable', 'in:regular,cash,card,mobile,transfer,credit'],
             'credit_account_id' => ['nullable', 'integer', 'exists:credit_accounts,id'],
+            'credit_account_user_id' => ['nullable', 'integer', 'exists:credit_account_users,id'],
             'credit_notes' => ['nullable', 'string', 'max:1000'],
             'override_credit_limit' => ['nullable', 'boolean'],
             'items' => ['required', 'array', 'min:1'],
@@ -63,8 +65,30 @@ class StoreOrderRequest extends FormRequest
                 $validator->errors()->add('waiter_id', 'Waiter is required for cashier order.');
             }
 
-            if ($this->input('payment_type') === 'credit' && !$this->filled('credit_account_id')) {
-                $validator->errors()->add('credit_account_id', 'Credit account is required for credit orders.');
+            if ($this->input('payment_type') === 'credit') {
+                if (!$this->filled('credit_account_id')) {
+                    $validator->errors()->add('credit_account_id', 'Credit account is required for credit orders.');
+                    return;
+                }
+
+                $account = CreditAccount::find($this->input('credit_account_id'));
+
+                if ($account && strtolower((string) $account->account_type) === 'organization') {
+                    if (!$this->filled('credit_account_user_id')) {
+                        $validator->errors()->add('credit_account_user_id', 'Authorized person is required for organization credit accounts.');
+                    }
+
+                    if ($this->filled('credit_account_user_id')) {
+                        $exists = $account->authorizedUsers()
+                            ->where('id', $this->input('credit_account_user_id'))
+                            ->where('is_active', true)
+                            ->exists();
+
+                        if (!$exists) {
+                            $validator->errors()->add('credit_account_user_id', 'Selected authorized person is not active for this credit account.');
+                        }
+                    }
+                }
             }
         });
     }
