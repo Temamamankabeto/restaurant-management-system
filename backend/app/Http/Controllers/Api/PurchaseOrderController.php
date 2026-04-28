@@ -1,0 +1,241 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\InventoryItem;
+use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderItem;
+use App\Models\PurchaseOrderStatusHistory;
+use App\Services\AuditLogger;
+use App\Services\NotificationService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+class PurchaseOrderController extends Controller
+{
+    public function __construct(
+        private AuditLogger $auditLogger,
+        private NotificationService $notificationService,
+    ) {
+    }
+
+    public function index(Request $request)
+    {
+        $this->authorize('viewAny', PurchaseOrder::class);
+        $q = PurchaseOrder::query()
+            ->with(['supplier', 'items.inventoryItem', 'receivings'])
+            ->orderBy('id', 'desc');
+
+        if ($request->filled('status')) {
+            $q->where('status', $request->status);
+        }
+
+        if ($request->filled('supplier_id')) {
+            $q->where('supplier_id', $request->integer('supplier_id'));
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->search);
+            $q->where(function ($sub) use ($search) {
+                $sub->where('po_number', 'like', "%{$search}%")
+                    ->orWhere('notes', 'like', "%{$search}%")
+                    ->orWhereHas('supplier', fn ($supplier) => $supplier->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        return response()->json(['success' => true, 'data' => $q->paginate((int) ($request->get('per_page', 20)))]);
+    }
+
+    public function show($id)
+    {
+        $po = PurchaseOrder::with([
+            'supplier',
+            'items.inventoryItem',
+            'receivings.items.inventoryItem',
+            'histories.changer',
+        ])->findOrFail($id);
+        $this->authorize('view', $po);
+        return response()->json(['success' => true, 'data' => $po]);
+    }
+
+    public function store(Request $request)
+    {
+        $this->authorize('create', PurchaseOrder::class);
+        $data = $request->validate([
+            'supplier_id' => 'required|exists:suppliers,id',
+            'expected_date' => 'nullable|date',
+            'notes' => 'nullable|string|max:3000',
+            'status' => 'nullable|in:draft,submitted',
+            'reference_source' => 'nullable|string|max:255',
+            'from_low_stock_alerts' => 'nullable|boolean',
+            'items' => 'nullable|array|min:1',
+            'items.*.inventory_item_id' => 'required|exists:inventory_items,id|distinct',
+            'items.*.quantity' => 'required|numeric|min:0.001',
+            'items.*.base_unit' => 'nullable|in:g,ml,pc',
+            'items.*.unit_cost' => 'required|numeric|min:0',
+        ]);
+
+        return DB::transaction(function () use ($request, $data) {
+            $poNumber = 'PO-' . now()->format('Ymd') . '-' . str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
+            $initialStatus = $data['status'] ?? 'draft';
+
+            $items = $data['items'] ?? [];
+            if (($data['from_low_stock_alerts'] ?? false) && empty($items)) {
+                $items = InventoryItem::query()
+                    ->whereColumn('current_stock', '<=', 'minimum_quantity')
+                    ->get()
+                    ->map(fn ($item) => [
+                        'inventory_item_id' => $item->id,
+                        'quantity' => max(round((float) $item->minimum_quantity - (float) $item->current_stock, 3), 0.001),
+                        'base_unit' => $item->base_unit,
+                        'unit_cost' => (float) ($item->average_purchase_price ?? 0),
+                    ])
+                    ->all();
+            }
+
+            if (empty($items)) {
+                return response()->json(['success' => false, 'message' => 'At least one purchase order item is required.'], 422);
+            }
+
+            $po = PurchaseOrder::create([
+                'po_number' => $poNumber,
+                'supplier_id' => $data['supplier_id'],
+                'status' => $initialStatus,
+                'total' => 0,
+                'created_by' => $request->user()->id,
+                'submitted_by' => $initialStatus === 'submitted' ? $request->user()->id : null,
+                'submitted_at' => $initialStatus === 'submitted' ? now() : null,
+                'expected_date' => $data['expected_date'] ?? null,
+                'notes' => $data['notes'] ?? null,
+                'reference_source' => $data['reference_source'] ?? (($data['from_low_stock_alerts'] ?? false) ? 'low_stock_alert' : null),
+            ]);
+
+            $total = 0;
+            foreach ($items as $it) {
+                $inv = InventoryItem::findOrFail($it['inventory_item_id']);
+                $qty = round((float) $it['quantity'], 3);
+                $unitCost = round((float) $it['unit_cost'], 2);
+                $line = round($qty * $unitCost, 2);
+
+                PurchaseOrderItem::create([
+                    'purchase_order_id' => $po->id,
+                    'inventory_item_id' => $inv->id,
+                    'quantity' => $qty,
+                    'base_unit' => $it['base_unit'] ?? $inv->base_unit,
+                    'received_quantity' => 0,
+                    'unit_cost' => $unitCost,
+                    'line_total' => $line,
+                ]);
+                $total += $line;
+            }
+
+            $po->total = $total;
+            $po->save();
+            $po->load('items.inventoryItem');
+
+            $this->recordStatusHistory($po, null, $po->status, $request->user()->id, 'Purchase order created');
+            $this->auditLogger->log($request, $request->user()->id, 'PurchaseOrder', $po->id, 'purchase_order_created', null, $po->toArray(), 'Purchase order created.');
+
+            return response()->json(['success' => true, 'data' => $po], 201);
+        });
+    }
+
+    public function submit(Request $request, $id)
+    {
+        return DB::transaction(function () use ($request, $id) {
+            $po = PurchaseOrder::lockForUpdate()->findOrFail($id);
+            $this->authorize('create', PurchaseOrder::class);
+
+            if ($po->status !== 'draft') {
+                return response()->json(['success' => false, 'message' => 'Only draft purchase orders can be submitted.'], 422);
+            }
+
+            $before = $po->toArray();
+            $fromStatus = $po->status;
+            $po->update([
+                'status' => 'submitted',
+                'submitted_by' => $request->user()->id,
+                'submitted_at' => now(),
+            ]);
+
+            $this->recordStatusHistory($po, $fromStatus, 'submitted', $request->user()->id, 'Purchase order submitted');
+            $this->auditLogger->log($request, $request->user()->id, 'PurchaseOrder', $po->id, 'purchase_order_submitted', $before, $po->fresh()->toArray(), 'Purchase order submitted.');
+
+            return response()->json(['success' => true, 'data' => $po->fresh()]);
+        });
+    }
+
+    public function approve(Request $request, $id)
+    {
+        return DB::transaction(function () use ($request, $id) {
+            $po = PurchaseOrder::lockForUpdate()->findOrFail($id);
+            $this->authorize('approve', $po);
+            if (! in_array($po->status, ['draft', 'submitted'], true)) {
+                return response()->json(['success' => false, 'message' => 'Only draft or submitted PO can be approved'], 422);
+            }
+
+            $before = $po->toArray();
+            $fromStatus = $po->status;
+            $po->update([
+                'status' => 'approved',
+                'submitted_by' => $po->submitted_by ?: $request->user()->id,
+                'submitted_at' => $po->submitted_at ?: now(),
+                'approved_by' => $request->user()->id,
+                'approved_at' => now(),
+            ]);
+            $this->recordStatusHistory($po, $fromStatus, 'approved', $request->user()->id, 'Purchase order approved');
+            $this->notificationService->notifyUsersByPermission('stock_receiving.approve', 'Purchase order approved', "Purchase order {$po->po_number} is ready for receiving.", ['kind' => 'purchase_order_approved', 'purchase_order_id' => $po->id]);
+            $this->auditLogger->log($request, $request->user()->id, 'PurchaseOrder', $po->id, 'purchase_order_approved', $before, $po->fresh()->toArray(), 'Purchase order approved.');
+            return response()->json(['success' => true, 'data' => $po->fresh()]);
+        });
+    }
+
+    public function cancel(Request $request, $id)
+    {
+        $data = $request->validate(['reason' => 'required|string|max:1000']);
+
+        return DB::transaction(function () use ($request, $id, $data) {
+            $po = PurchaseOrder::lockForUpdate()->findOrFail($id);
+            $this->authorize('cancel', $po);
+            if (in_array($po->status, ['completed', 'received', 'cancelled'], true)) {
+                return response()->json(['success' => false, 'message' => 'This purchase order cannot be cancelled'], 422);
+            }
+
+            $before = $po->toArray();
+            $fromStatus = $po->status;
+            $po->update([
+                'status' => 'cancelled',
+                'cancelled_by' => $request->user()->id,
+                'cancelled_at' => now(),
+                'cancel_reason' => $data['reason'],
+            ]);
+            $this->recordStatusHistory($po, $fromStatus, 'cancelled', $request->user()->id, $data['reason']);
+            $this->auditLogger->log($request, $request->user()->id, 'PurchaseOrder', $po->id, 'purchase_order_cancelled', $before, $po->fresh()->toArray(), 'Purchase order cancelled.');
+            return response()->json(['success' => true, 'data' => $po->fresh()]);
+        });
+    }
+
+    public function history($id)
+    {
+        $po = PurchaseOrder::findOrFail($id);
+        $this->authorize('view', $po);
+
+        return response()->json([
+            'success' => true,
+            'data' => $po->histories()->with('changer')->orderBy('id')->get(),
+        ]);
+    }
+
+    private function recordStatusHistory(PurchaseOrder $po, ?string $fromStatus, string $toStatus, ?int $userId, ?string $note = null): void
+    {
+        PurchaseOrderStatusHistory::create([
+            'purchase_order_id' => $po->id,
+            'from_status' => $fromStatus,
+            'to_status' => $toStatus,
+            'note' => $note,
+            'changed_by' => $userId,
+            'changed_at' => now(),
+        ]);
+    }
+}
