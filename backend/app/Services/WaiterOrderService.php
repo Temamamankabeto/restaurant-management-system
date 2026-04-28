@@ -63,8 +63,6 @@ class WaiterOrderService
                 $discount = max(0, round((float) ($data['discount'] ?? 0), 2));
                 $total = max(0, round(($subtotal + $tax + $serviceCharge) - $discount, 2));
 
-                $source = (string) ($data['_source'] ?? 'waiter');
-                $isCashierOrder = $source === 'cashier';
                 $paymentType = (string) ($data['payment_type'] ?? 'regular');
                 $isCreditOrder = $paymentType === 'credit';
 
@@ -77,8 +75,6 @@ class WaiterOrderService
                     DiningTable::query()->where('id', $tableId)->where('is_active', true)->lockForUpdate()->firstOrFail();
                 }
 
-                // Waiter and cashier orders enter the kitchen/bar flow immediately.
-                // Payment is recorded later by the cashier against the generated bill.
                 $orderStatus = 'confirmed';
                 $itemStatus = 'confirmed';
                 $ticketStatus = 'confirmed';
@@ -96,7 +92,7 @@ class WaiterOrderService
                     'customer_address' => trim($data['customer_address'] ?? '') ?: null,
                     'status' => $orderStatus,
                     'payment_type' => $isCreditOrder ? 'credit' : $paymentType,
-                    'credit_status' => $isCreditOrder ? 'credit_pending' : null,
+                    'credit_status' => $isCreditOrder ? 'credit_approved' : null,
                     'credit_account_id' => $isCreditOrder ? (int) ($data['credit_account_id'] ?? 0) : null,
                     'subtotal' => $subtotal,
                     'tax' => $tax,
@@ -129,7 +125,7 @@ class WaiterOrderService
                     'balance' => $total,
                     'status' => $billStatus,
                     'bill_type' => $isCreditOrder ? 'credit' : 'normal',
-                    'credit_status' => $isCreditOrder ? 'credit_pending' : null,
+                    'credit_status' => $isCreditOrder ? 'credit_approved' : null,
                     'due_date' => null,
                     'issued_at' => $issuedAt,
                 ]);
@@ -141,18 +137,17 @@ class WaiterOrderService
                         $authUserId,
                         null,
                         $data['credit_notes'] ?? null,
-                        (bool) ($data['override_credit_limit'] ?? false)
+                        false,
+                        !empty($data['credit_account_user_id']) ? (int) $data['credit_account_user_id'] : null
                     );
                 }
 
                 if ($orderType === 'dine_in' && !empty($tableId)) DiningTable::where('id', $tableId)->update(['status' => 'occupied']);
 
-                // Inventory deduction belongs to the confirmed stage. Since orders are
-                // now confirmed at creation for waiter and cashier, deduct once here.
                 $order->load('items.menuItem');
                 $this->inventoryDeductionService->deductForOrder($order, $authUserId);
 
-                return $order->load(['items.menuItem', 'creator', 'waiter', 'table', 'bill.creditOrder.account', 'creditOrder.account']);
+                return $order->load(['items.menuItem', 'creator', 'waiter', 'table', 'bill.creditOrder.account', 'creditOrder.account', 'creditOrder.authorizedUser']);
             });
         } catch (\Throwable $e) {
             Log::error('Order creation failed', ['message' => $e->getMessage(), 'trace' => $e->getTraceAsString(), 'user_id' => $authUserId, 'payload' => $data]);
