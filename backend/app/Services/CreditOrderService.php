@@ -13,9 +13,16 @@ use RuntimeException;
 
 class CreditOrderService
 {
-    public function createForBill(Bill $bill, int $creditAccountId, int $userId, ?string $dueDate = null, ?string $notes = null, bool $overrideLimit = false, ?int $creditAccountUserId = null): CreditOrder
-    {
-        return DB::transaction(function () use ($bill, $creditAccountId, $userId, $dueDate, $notes, $overrideLimit, $creditAccountUserId) {
+    public function createForBill(
+        Bill $bill,
+        int $creditAccountId,
+        int $userId,
+        ?string $dueDate = null,
+        ?string $notes = null,
+        bool $overrideLimit = false,
+        int|array|null $creditAccountUserIds = null
+    ): CreditOrder {
+        return DB::transaction(function () use ($bill, $creditAccountId, $userId, $dueDate, $notes, $overrideLimit, $creditAccountUserIds) {
             $bill = Bill::with('order')->lockForUpdate()->findOrFail($bill->id);
             $account = CreditAccount::lockForUpdate()->findOrFail($creditAccountId);
 
@@ -23,21 +30,39 @@ class CreditOrderService
                 throw new RuntimeException('Credit account is not active or credit is disabled.');
             }
 
-            $authorizedUser = null;
+            $authorizedUsers = collect();
             if (strtolower((string) $account->account_type) === 'organization') {
-                if (!$creditAccountUserId) {
-                    throw new RuntimeException('Authorized person is required for organization credit account.');
+                $ids = collect(is_array($creditAccountUserIds) ? $creditAccountUserIds : [$creditAccountUserIds])
+                    ->filter(fn ($id) => !empty($id))
+                    ->map(fn ($id) => (int) $id)
+                    ->unique()
+                    ->values();
+
+                if ($ids->isEmpty()) {
+                    throw new RuntimeException('At least one authorized person is required for organization credit account.');
                 }
 
-                $authorizedUser = CreditAccountUser::where('credit_account_id', $account->id)
-                    ->where('id', $creditAccountUserId)
+                $authorizedUsers = CreditAccountUser::where('credit_account_id', $account->id)
+                    ->whereIn('id', $ids->all())
                     ->lockForUpdate()
-                    ->firstOrFail();
+                    ->get();
 
-                if (!$authorizedUser->is_active) {
-                    throw new RuntimeException('Selected authorized person is disabled for this credit account.');
+                if ($authorizedUsers->count() !== $ids->count()) {
+                    throw new RuntimeException('One or more selected authorized persons are invalid for this credit account.');
+                }
+
+                if ($authorizedUsers->contains(fn ($user) => ! (bool) $user->is_active)) {
+                    throw new RuntimeException('One or more selected authorized persons are disabled for this credit account.');
                 }
             }
+
+            $primaryAuthorizedUser = $authorizedUsers->first();
+            $usedByName = $authorizedUsers->isNotEmpty()
+                ? $authorizedUsers->map(fn ($user) => trim($user->full_name . ($user->position ? ' (' . $user->position . ')' : '')))->implode(', ')
+                : null;
+            $usedByPhone = $authorizedUsers->isNotEmpty()
+                ? $authorizedUsers->map(fn ($user) => trim((string) $user->phone))->filter()->implode(', ')
+                : null;
 
             $total = round((float) $bill->total, 2);
             $available = round((float) $account->credit_limit - (float) $account->current_balance, 2);
@@ -51,9 +76,9 @@ class CreditOrderService
                 'order_id' => $bill->order_id,
                 'bill_id' => $bill->id,
                 'credit_account_id' => $account->id,
-                'credit_account_user_id' => $authorizedUser?->id,
-                'used_by_name' => $authorizedUser?->full_name,
-                'used_by_phone' => $authorizedUser?->phone,
+                'credit_account_user_id' => $primaryAuthorizedUser?->id,
+                'used_by_name' => $usedByName,
+                'used_by_phone' => $usedByPhone,
                 'credit_reference' => $this->reference(),
                 'total_amount' => $total,
                 'paid_amount' => 0,
