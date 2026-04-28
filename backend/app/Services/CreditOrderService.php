@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Bill;
 use App\Models\CreditAccount;
+use App\Models\CreditAccountUser;
 use App\Models\CreditApprovalLog;
 use App\Models\CreditOrder;
 use App\Models\CreditSettlement;
@@ -12,9 +13,9 @@ use RuntimeException;
 
 class CreditOrderService
 {
-    public function createForBill(Bill $bill, int $creditAccountId, int $userId, ?string $dueDate = null, ?string $notes = null, bool $overrideLimit = false): CreditOrder
+    public function createForBill(Bill $bill, int $creditAccountId, int $userId, ?string $dueDate = null, ?string $notes = null, bool $overrideLimit = false, ?int $creditAccountUserId = null): CreditOrder
     {
-        return DB::transaction(function () use ($bill, $creditAccountId, $userId, $dueDate, $notes, $overrideLimit) {
+        return DB::transaction(function () use ($bill, $creditAccountId, $userId, $dueDate, $notes, $overrideLimit, $creditAccountUserId) {
             $bill = Bill::with('order')->lockForUpdate()->findOrFail($bill->id);
             $account = CreditAccount::lockForUpdate()->findOrFail($creditAccountId);
 
@@ -22,25 +23,44 @@ class CreditOrderService
                 throw new RuntimeException('Credit account is not active or credit is disabled.');
             }
 
+            $authorizedUser = null;
+            if (strtolower((string) $account->account_type) === 'organization') {
+                if (!$creditAccountUserId) {
+                    throw new RuntimeException('Authorized person is required for organization credit account.');
+                }
+
+                $authorizedUser = CreditAccountUser::where('credit_account_id', $account->id)
+                    ->where('id', $creditAccountUserId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (!$authorizedUser->is_active) {
+                    throw new RuntimeException('Selected authorized person is disabled for this credit account.');
+                }
+            }
+
             $total = round((float) $bill->total, 2);
             $available = round((float) $account->credit_limit - (float) $account->current_balance, 2);
 
             if (!$overrideLimit && $total > $available) {
-                throw new RuntimeException('Credit limit exceeded. Choose another credit account or reduce the order amount.');
+                throw new RuntimeException('Credit limit exceeded. Remaining limit: ' . number_format($available, 2));
             }
 
-            $status = $account->requires_approval ? 'credit_pending' : 'credit_approved';
+            $status = 'credit_approved';
             $creditOrder = CreditOrder::create([
                 'order_id' => $bill->order_id,
                 'bill_id' => $bill->id,
                 'credit_account_id' => $account->id,
+                'credit_account_user_id' => $authorizedUser?->id,
+                'used_by_name' => $authorizedUser?->full_name,
+                'used_by_phone' => $authorizedUser?->phone,
                 'credit_reference' => $this->reference(),
                 'total_amount' => $total,
                 'paid_amount' => 0,
                 'remaining_amount' => $total,
                 'status' => $status,
-                'approved_by' => $status === 'credit_approved' ? $userId : null,
-                'approved_at' => $status === 'credit_approved' ? now() : null,
+                'approved_by' => $userId,
+                'approved_at' => now(),
                 'due_date' => $this->calculateDueDateFromAccount($account),
                 'notes' => $notes,
             ]);
@@ -65,12 +85,12 @@ class CreditOrderService
 
             CreditApprovalLog::create([
                 'credit_order_id' => $creditOrder->id,
-                'action' => $status === 'credit_approved' ? ($overrideLimit ? 'overridden' : 'approved') : 'requested',
+                'action' => 'created',
                 'actor_id' => $userId,
                 'note' => $notes,
             ]);
 
-            return $creditOrder->fresh(['account','order','bill','logs']);
+            return $creditOrder->fresh(['account','authorizedUser','order','bill','logs']);
         });
     }
 
@@ -81,39 +101,6 @@ class CreditOrderService
             'weekly' => now()->addWeek(),
             default => now()->addMonth(),
         };
-    }
-
-    public function approve(CreditOrder $creditOrder, int $userId, ?string $note = null): CreditOrder
-    {
-        return DB::transaction(function () use ($creditOrder, $userId, $note) {
-            $creditOrder = CreditOrder::lockForUpdate()->findOrFail($creditOrder->id);
-            if (!in_array($creditOrder->status, ['credit_pending','blocked'], true)) {
-                throw new RuntimeException('Only pending or blocked credit orders can be approved.');
-            }
-            $creditOrder->update(['status' => 'credit_approved', 'approved_by' => $userId, 'approved_at' => now()]);
-            $creditOrder->bill?->update(['credit_status' => 'credit_approved']);
-            $creditOrder->order?->update(['credit_status' => 'credit_approved']);
-            CreditApprovalLog::create(['credit_order_id' => $creditOrder->id, 'action' => 'approved', 'actor_id' => $userId, 'note' => $note]);
-            return $creditOrder->fresh(['account','order','bill','logs']);
-        });
-    }
-
-    public function reject(CreditOrder $creditOrder, int $userId, ?string $note = null): CreditOrder
-    {
-        return DB::transaction(function () use ($creditOrder, $userId, $note) {
-            $creditOrder = CreditOrder::with('account')->lockForUpdate()->findOrFail($creditOrder->id);
-            if ($creditOrder->status === 'fully_settled') {
-                throw new RuntimeException('Fully settled credit orders cannot be rejected.');
-            }
-            $amount = (float) $creditOrder->remaining_amount;
-            $creditOrder->account->current_balance = max(0, round((float) $creditOrder->account->current_balance - $amount, 2));
-            $creditOrder->account->save();
-            $creditOrder->update(['status' => 'blocked']);
-            $creditOrder->bill?->update(['credit_status' => 'blocked']);
-            $creditOrder->order?->update(['credit_status' => 'blocked']);
-            CreditApprovalLog::create(['credit_order_id' => $creditOrder->id, 'action' => 'blocked', 'actor_id' => $userId, 'note' => $note]);
-            return $creditOrder->fresh(['account','order','bill','logs']);
-        });
     }
 
     public function settle(CreditOrder $creditOrder, array $data, int $userId): CreditOrder
@@ -150,7 +137,7 @@ class CreditOrderService
             $creditOrder->bill->save();
             $creditOrder->order?->update(['credit_status' => $creditOrder->status]);
             CreditApprovalLog::create(['credit_order_id' => $creditOrder->id, 'action' => 'settled', 'actor_id' => $userId, 'note' => $data['notes'] ?? null]);
-            return $creditOrder->fresh(['account','order','bill','settlements.receiver','logs']);
+            return $creditOrder->fresh(['account','authorizedUser','order','bill','settlements.receiver','logs']);
         });
     }
 
