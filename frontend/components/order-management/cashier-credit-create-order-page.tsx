@@ -30,6 +30,14 @@ function imageUrl(item: any) {
   return base ? `${base}/${cleaned}` : `/${cleaned}`;
 }
 
+function accountUsers(account?: CreditAccount | null): CreditAccountUser[] {
+  const value = account as any;
+  if (Array.isArray(value?.authorized_users)) return value.authorized_users;
+  if (Array.isArray(value?.authorizedUsers)) return value.authorizedUsers;
+  if (Array.isArray(value?.users)) return value.users;
+  return [];
+}
+
 async function getAuthorizedUsers(accountId?: string | number) {
   if (!accountId) return [];
   const response = await api.get(`/credit/accounts/${accountId}/users`, { params: { active: 1, per_page: 100 } });
@@ -77,9 +85,12 @@ export function CashierCreditCreateOrderPage() {
   const tables = tablesQuery.data?.data ?? [];
   const waiters = waitersQuery.data ?? [];
   const creditAccounts = creditAccountsQuery.data?.data ?? [];
-  const authorizedUsers = authorizedUsersQuery.data ?? [];
 
   const selectedCreditAccount = creditAccounts.find((account) => String(account.id) === String(payload.credit_account_id));
+  const usersFromAccount = accountUsers(selectedCreditAccount);
+  const usersFromEndpoint = authorizedUsersQuery.data ?? [];
+  const authorizedUsers = usersFromAccount.length ? usersFromAccount : usersFromEndpoint;
+
   const creditLimit = Number(selectedCreditAccount?.credit_limit ?? 0);
   const currentBalance = Number(selectedCreditAccount?.current_balance ?? 0);
   const remainingLimit = Math.max(0, creditLimit - currentBalance);
