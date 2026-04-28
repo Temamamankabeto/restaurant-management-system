@@ -30,10 +30,6 @@ function imageUrl(item: any) {
   return base ? `${base}/${cleaned}` : `/${cleaned}`;
 }
 
-function isOrganization(account?: CreditAccount | null) {
-  return String(account?.account_type ?? "").trim().toLowerCase() === "organization";
-}
-
 async function getAuthorizedUsers(accountId?: string | number) {
   if (!accountId) return [];
   const response = await api.get(`/credit/accounts/${accountId}/users`, { params: { active: 1, per_page: 100 } });
@@ -64,10 +60,12 @@ export function CashierCreditCreateOrderPage() {
   const tablesQuery = useTablesQuery({ per_page: 100, status: "available", is_active: 1 }, "cashier");
   const waitersQuery = useWaitersLiteQuery();
   const creditAccountsQuery = useCreditAccountsQuery({ per_page: 100, status: "active" });
+
+  const isCredit = payload.payment_type === "credit";
   const authorizedUsersQuery = useQuery({
     queryKey: ["credit-account-authorized-users", payload.credit_account_id],
     queryFn: () => getAuthorizedUsers(payload.credit_account_id),
-    enabled: payload.payment_type === "credit" && Boolean(payload.credit_account_id),
+    enabled: Boolean(payload.credit_account_id),
   });
 
   const create = useCreateOrderMutation("cashier", () => {
@@ -82,13 +80,9 @@ export function CashierCreditCreateOrderPage() {
   const authorizedUsers = authorizedUsersQuery.data ?? [];
 
   const selectedCreditAccount = creditAccounts.find((account) => String(account.id) === String(payload.credit_account_id));
-  const organizationCredit = isOrganization(selectedCreditAccount);
-  const shouldShowAuthorizedUserSelector = isCreditAccountSelected(payload.payment_type, payload.credit_account_id);
-  const requiresAuthorizedUser = shouldShowAuthorizedUserSelector && (organizationCredit || authorizedUsers.length > 0 || authorizedUsersQuery.isLoading);
   const creditLimit = Number(selectedCreditAccount?.credit_limit ?? 0);
   const currentBalance = Number(selectedCreditAccount?.current_balance ?? 0);
   const remainingLimit = Math.max(0, creditLimit - currentBalance);
-  const isCredit = payload.payment_type === "credit";
   const needsTable = payload.order_type === "dine_in";
 
   const total = useMemo(() => items.reduce((sum, item) => {
@@ -100,7 +94,7 @@ export function CashierCreditCreateOrderPage() {
     items.length > 0 &&
     (!needsTable || Boolean(payload.table_id)) &&
     Boolean(payload.waiter_id) &&
-    (!isCredit || (Boolean(payload.credit_account_id) && total <= remainingLimit && (!requiresAuthorizedUser || Boolean(payload.credit_account_user_id))));
+    (!isCredit || (Boolean(payload.credit_account_id) && Boolean(payload.credit_account_user_id) && total <= remainingLimit));
 
   function addItem(id: string | number) {
     setItems((current) => {
@@ -128,7 +122,7 @@ export function CashierCreditCreateOrderPage() {
       waiter_id: payload.waiter_id,
       payment_type: payload.payment_type as any,
       credit_account_id: isCredit ? payload.credit_account_id : null,
-      credit_account_user_id: isCredit && payload.credit_account_user_id ? payload.credit_account_user_id : null,
+      credit_account_user_id: isCredit ? payload.credit_account_user_id : null,
       credit_notes: payload.credit_notes,
       notes: payload.notes,
       items,
@@ -211,20 +205,18 @@ export function CashierCreditCreateOrderPage() {
                     </Select>
                   </div>
 
-                  {shouldShowAuthorizedUserSelector && (
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Authorized user / person</Label>
-                      <Select value={payload.credit_account_user_id} onValueChange={(credit_account_user_id) => setPayload((p) => ({ ...p, credit_account_user_id }))}>
-                        <SelectTrigger><SelectValue placeholder={authorizedUsersQuery.isLoading ? "Loading authorized users..." : "Choose authorized user"} /></SelectTrigger>
-                        <SelectContent>
-                          {authorizedUsers.length ? authorizedUsers.map((user) => (
-                            <SelectItem key={user.id} value={String(user.id)}>{user.full_name}{user.phone ? ` • ${user.phone}` : ""}{user.position ? ` • ${user.position}` : ""}</SelectItem>
-                          )) : <SelectItem value="none" disabled>{authorizedUsersQuery.isLoading ? "Loading authorized users..." : "No active authorized users found"}</SelectItem>}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">Select the person using this credit account. This is required when the account has authorized users.</p>
-                    </div>
-                  )}
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Authorized user / person</Label>
+                    <Select value={payload.credit_account_user_id} onValueChange={(credit_account_user_id) => setPayload((p) => ({ ...p, credit_account_user_id }))} disabled={!payload.credit_account_id || authorizedUsersQuery.isLoading}>
+                      <SelectTrigger><SelectValue placeholder={!payload.credit_account_id ? "Choose credit account first" : authorizedUsersQuery.isLoading ? "Loading authorized users..." : "Choose authorized user"} /></SelectTrigger>
+                      <SelectContent>
+                        {authorizedUsers.length ? authorizedUsers.map((user) => (
+                          <SelectItem key={user.id} value={String(user.id)}>{user.full_name}{user.phone ? ` • ${user.phone}` : ""}{user.position ? ` • ${user.position}` : ""}</SelectItem>
+                        )) : <SelectItem value="none" disabled>{authorizedUsersQuery.isLoading ? "Loading authorized users..." : "No active authorized users found"}</SelectItem>}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Select the person using this credit account.</p>
+                  </div>
 
                   <div className="rounded-xl border p-3 text-sm md:col-span-2">
                     <div className="flex justify-between"><span>Credit limit</span><strong>{money(creditLimit)}</strong></div>
@@ -298,17 +290,13 @@ export function CashierCreditCreateOrderPage() {
 
             <div className="flex justify-between rounded-xl bg-muted p-4 text-lg font-semibold"><span>Total</span><span>{money(total)}</span></div>
             {!payload.waiter_id && <p className="text-sm text-muted-foreground">Select the responsible waiter before creating the order.</p>}
-            {isCredit && requiresAuthorizedUser && !payload.credit_account_user_id && <p className="text-sm text-destructive">Select the authorized person before creating this credit order.</p>}
+            {isCredit && payload.credit_account_id && !payload.credit_account_user_id && <p className="text-sm text-destructive">Select the authorized person before creating this credit order.</p>}
             <Button className="w-full" disabled={!canSubmit || create.isPending} onClick={submit}>Submit order</Button>
           </CardContent>
         </Card>
       </div>
     </div>
   );
-}
-
-function isCreditAccountSelected(paymentType: string, creditAccountId: string | number | null | undefined) {
-  return paymentType === "credit" && Boolean(creditAccountId);
 }
 
 export function RoleAwareCreateOrderPage() {
