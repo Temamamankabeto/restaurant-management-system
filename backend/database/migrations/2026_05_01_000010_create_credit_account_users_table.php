@@ -1,1 +1,33 @@
-PD9waHAKCiB1c2UgSWxsdW1pbmF0ZVxEYXRhYmFzZVxNaWdyYXRpb25zXE1pZ3JhdGlvbjsKIHVzZSBJbGx1bWluYXRlXERhdGFiYXNlXFNjaGVtYVxCbHVlcHJpbnQ7CiB1c2UgSWxsdW1pbmF0ZVxTdXBwb3J0XEZhY2FkZXNcU2NoZW1hOwoKcmV0dXJuIG5ldyBjbGFzcyBleHRlbmRzIE1pZ3JhdGlvbiB7CiAgICBwdWJsaWMgZnVuY3Rpb24gdXAoKTogdm9pZAogICAgewogICAgICAgIFNjaGVtYTo6Y3JlYXRlKCdjcmVkaXRfYWNjb3VudF91c2VycycsIGZ1bmN0aW9uIChCbHVlcHJpbnQgJHRhYmxlKSB7CiAgICAgICAgICAgICR0YWJsZS0+aWQoKTsKICAgICAgICAgICAgJHRhYmxlLT5mb3JlaWduSWRlbnQoJ2NyZWRpdF9hY2NvdW50X2lkJyktPmNvbnN0cmFpbmVkKCktPmNhc2NhZGVPbkRlbGV0ZSgpOwogICAgICAgICAgICAkdGFibGUtPnN0cmluZygnZnVsbF9uYW1lJyk7CiAgICAgICAgICAgICR0YWJsZS0+c3RyaW5nKCdwaG9uZScpLT5udWxsYWJsZSgpOwogICAgICAgICAgICAkdGFibGUtPnN0cmluZygnZW1wbG95ZWVfaWQnKS0+bnVsbGFibGUoKTsKICAgICAgICAgICAgJHRhYmxlLT5zdHJpbmcoJ3Bvc2l0aW9uJyktPm51bGxhYmxlKCk7CiAgICAgICAgICAgICR0YWJsZS0+c3RyaW5nKCdpZF9udW1iZXInKS0+bnVsbGFibGUoKTsKICAgICAgICAgICAgJHRhYmxlLT5kZWNpbWFsKCdkYWlseV9saW1pdCcsIDEyLCAyKS0+bnVsbGFibGUoKTsKICAgICAgICAgICAgJHRhYmxlLT5kZWNpbWFsKCdtb250aGx5X2xpbWl0JywgMTIsIDIpLT5udWxsYWJsZSgpOwogICAgICAgICAgICAkdGFibGUtPmJvb2xlYW4oJ2lzX2FjdGl2ZScpLT5kZWZhdWx0KHRydWUpOwogICAgICAgICAgICAkdGFibGUtPmZvcmVpZ25JZGVudCgnY3JlYXRlZF9ieScpLT5udWxsYWJsZSgpLT5jb25zdHJhaW5lZCgndXNlcnMnKS0+bnVsbE9uRGVsZXRlKCk7CiAgICAgICAgICAgICR0YWJsZS0+dGltZXN0YW1wcygpOwogICAgICAgIH0pOwogICAgfQoKICAgIHB1YmxpYyBmdW5jdGlvbiBkb3duKCk6IHZvaWQKICAgIHsKICAgICAgICBTY2hlbWE6OmRyb3BJZkV4aXN0cygnY3JlZGl0X2FjY291bnRfdXNlcnMnKTsKICAgIH0KfTsK
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration {
+    public function up(): void
+    {
+        Schema::create('credit_account_users', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('credit_account_id');
+            $table->string('full_name');
+            $table->string('phone')->nullable();
+            $table->string('employee_id')->nullable();
+            $table->string('position')->nullable();
+            $table->string('id_number')->nullable();
+            $table->decimal('daily_limit', 12, 2)->nullable();
+            $table->decimal('monthly_limit', 12, 2)->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->timestamps();
+
+            $table->foreign('credit_account_id')->references('id')->on('credit_accounts')->onDelete('cascade');
+            $table->foreign('created_by')->references('id')->on('users')->nullOnDelete();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('credit_account_users');
+    }
+};
