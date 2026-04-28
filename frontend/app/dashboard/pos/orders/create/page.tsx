@@ -1,2 +1,5 @@
-import { CreateOrderPage } from '@/components/order-management';
-export default function Page() { return <CreateOrderPage scope="cashier" title="Create POS Order" />; }
+import { CashierCreditCreateOrderPage } from '@/components/order-management/cashier-credit-create-order-page';
+
+export default function Page() {
+  return <CashierCreditCreateOrderPage />;
+}
