@@ -35,6 +35,7 @@ class CreditOrder extends Model
     public function account() { return $this->belongsTo(CreditAccount::class, 'credit_account_id'); }
     public function authorizedUser() { return $this->belongsTo(CreditAccountUser::class, 'credit_account_user_id'); }
     public function creditAccountUser() { return $this->belongsTo(CreditAccountUser::class, 'credit_account_user_id'); }
+    public function authorizedUsers() { return $this->hasMany(CreditOrderAuthorizedUser::class); }
     public function order() { return $this->belongsTo(Order::class); }
     public function bill() { return $this->belongsTo(Bill::class); }
     public function settlements() { return $this->hasMany(CreditSettlement::class); }
