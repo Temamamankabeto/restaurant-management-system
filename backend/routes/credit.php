@@ -8,6 +8,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/credit/accounts', [CreditOrderController::class, 'storeAccount']);
     Route::get('/credit/accounts/{id}', [CreditOrderController::class, 'showAccount']);
     Route::put('/credit/accounts/{id}', [CreditOrderController::class, 'updateAccount']);
+    Route::patch('/credit/accounts/{id}/toggle', [CreditOrderController::class, 'toggleAccount']);
     Route::patch('/credit/accounts/{id}/block', [CreditOrderController::class, 'blockAccount']);
     Route::patch('/credit/accounts/{id}/unblock', [CreditOrderController::class, 'unblockAccount']);
 
