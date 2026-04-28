@@ -18,6 +18,7 @@ export type OrderPayload = {
   waiter_id?: string | number | null;
   credit_account_id?: string | number | null;
   credit_account_user_id?: string | number | null;
+  credit_account_user_ids?: Array<string | number>;
   credit_notes?: string;
   notes?: string;
   items: OrderItemPayload[];
@@ -136,6 +137,7 @@ export type PackageOrderPayload = {
   waiter_id?: string | number | null;
   credit_account_id?: string | number | null;
   credit_account_user_id?: string | number | null;
+  credit_account_user_ids?: Array<string | number>;
   credit_notes?: string;
   notes?: string;
 };
@@ -179,4 +181,4 @@ export type PrepTicket = {
   notes?: string | null;
 };
 export type PaymentPayload = { amount: number; payment_method: Exclude<PaymentType, 'credit'>; reference_number?: string; notes?: string };
-export type ConvertCreditPayload = { credit_account_id: string | number; credit_account_user_id?: string | number | null; notes?: string };
+export type ConvertCreditPayload = { credit_account_id: string | number; credit_account_user_id?: string | number | null; credit_account_user_ids?: Array<string | number>; notes?: string };
