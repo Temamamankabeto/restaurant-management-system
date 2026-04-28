@@ -17,6 +17,7 @@ export type OrderPayload = {
   payment_type?: PaymentType | 'regular';
   waiter_id?: string | number | null;
   credit_account_id?: string | number | null;
+  credit_account_user_id?: string | number | null;
   credit_notes?: string;
   notes?: string;
   items: OrderItemPayload[];
@@ -60,9 +61,24 @@ export type Order = {
   bill?: { id: string | number; status?: string; total?: number | string; balance_amount?: number | string } | null;
 };
 
-export type OrderFilters = { search?: string; status?: string; payment_type?: string; payment_status?: string; order_type?: string; period?: string; date_from?: string; date_to?: string; credit_account_id?: string | number; page?: number; per_page?: number };
+export type OrderFilters = { search?: string; status?: string; payment_type?: string; payment_status?: string; order_type?: string; period?: string; date_from?: string; date_to?: string; credit_account_id?: string | number; page?: number; per_page?: number; active?: boolean | number };
 
 export type LiteUser = { id: string | number; name?: string; email?: string; role?: string };
+
+export type CreditAccountUser = {
+  id: string | number;
+  credit_account_id?: string | number;
+  full_name: string;
+  phone?: string | null;
+  employee_id?: string | null;
+  position?: string | null;
+  id_number?: string | null;
+  daily_limit?: number | string | null;
+  monthly_limit?: number | string | null;
+  is_active?: boolean | number;
+  created_at?: string;
+};
+export type CreditAccountUserPayload = { full_name: string; phone?: string; employee_id?: string; position?: string; id_number?: string; daily_limit?: number | null; monthly_limit?: number | null; is_active?: boolean };
 
 export type CreditAccount = {
   id: string | number;
@@ -78,6 +94,8 @@ export type CreditAccount = {
   settlement_cycle?: string;
   status?: string;
   created_at?: string;
+  authorized_users?: CreditAccountUser[];
+  authorizedUsers?: CreditAccountUser[];
 };
 export type CreditAccountPayload = { name: string; account_type?: string; customer_id?: string | number | null; organization_id?: string | number | null; credit_limit: number; is_credit_enabled?: boolean; requires_approval?: boolean; settlement_cycle?: string; status?: string };
 export type CreditOrder = {
@@ -87,6 +105,11 @@ export type CreditOrder = {
   order_id?: string | number;
   credit_account?: CreditAccount | null;
   account?: CreditAccount | null;
+  credit_account_user?: CreditAccountUser | null;
+  authorized_user?: CreditAccountUser | null;
+  credit_account_user_id?: string | number | null;
+  used_by_name?: string | null;
+  used_by_phone?: string | null;
   total_amount?: number | string;
   paid_amount?: number | string;
   remaining_amount?: number | string;
@@ -112,6 +135,7 @@ export type PackageOrderPayload = {
   payment_type?: PaymentType | 'regular';
   waiter_id?: string | number | null;
   credit_account_id?: string | number | null;
+  credit_account_user_id?: string | number | null;
   credit_notes?: string;
   notes?: string;
 };
@@ -155,4 +179,4 @@ export type PrepTicket = {
   notes?: string | null;
 };
 export type PaymentPayload = { amount: number; payment_method: Exclude<PaymentType, 'credit'>; reference_number?: string; notes?: string };
-export type ConvertCreditPayload = { credit_account_id: string | number; notes?: string };
+export type ConvertCreditPayload = { credit_account_id: string | number; credit_account_user_id?: string | number | null; notes?: string };
