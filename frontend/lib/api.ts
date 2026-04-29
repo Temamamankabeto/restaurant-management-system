@@ -26,7 +26,7 @@ export function clearSession() {
 }
 
 const api = axios.create({
-  baseURL:'/api',
+  baseURL: API_BASE_URL,
   timeout: Number(process.env.NEXT_PUBLIC_API_TIMEOUT ?? 15000),
   withCredentials: false,
   headers: {
@@ -73,5 +73,19 @@ api.interceptors.response.use(
     return Promise.reject(new Error(message));
   }
 );
+
+export function unwrap<T>(response: any): T {
+  const body = response?.data;
+
+  if (!body) {
+    throw new Error("Invalid API response");
+  }
+
+  if (body.success === false) {
+    throw new Error(body.message || "Request failed");
+  }
+
+  return body as T;
+}
 
 export default api;
