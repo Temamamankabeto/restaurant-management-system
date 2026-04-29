@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { queryKeys } from "@/hooks/queryKeys";
-import { userService } from "@/services/user-management/user.service";
+import { userManagementService } from "@/services/user-management";
 import type {
   AssignUserRolePayload,
   CreateUserPayload,
@@ -21,14 +21,14 @@ function invalidateUsers(queryClient: ReturnType<typeof useQueryClient>) {
 export function useUsersQuery(params: UserListParams = {}) {
   return useQuery({
     queryKey: queryKeys.users.list(params),
-    queryFn: () => userService.list(params),
+    queryFn: () => userManagementService.users.list(params),
   });
 }
 
 export function useUserQuery(id?: number | string) {
   return useQuery({
     queryKey: queryKeys.users.detail(id ?? ""),
-    queryFn: () => userService.show(id as number | string),
+    queryFn: () => userManagementService.users.show(id as number | string),
     enabled: Boolean(id),
   });
 }
@@ -36,14 +36,14 @@ export function useUserQuery(id?: number | string) {
 export function useUserRolesLiteQuery() {
   return useQuery({
     queryKey: queryKeys.roles.lite(),
-    queryFn: () => userService.rolesLite(),
+    queryFn: () => userManagementService.users.rolesLite(),
   });
 }
 
 export function useWaitersLiteQuery(search?: string) {
   return useQuery({
     queryKey: queryKeys.tables.waiters(search),
-    queryFn: () => userService.waitersLite(search),
+    queryFn: () => userManagementService.users.waitersLite(search),
   });
 }
 
@@ -51,7 +51,7 @@ export function useCreateUserMutation(onSuccess?: () => void) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: CreateUserPayload) => userService.create(payload),
+    mutationFn: (payload: CreateUserPayload) => userManagementService.users.create(payload),
     onSuccess: (response) => {
       toast.success(response.message ?? "User created");
       invalidateUsers(queryClient);
@@ -65,7 +65,7 @@ export function useUpdateUserMutation(onSuccess?: () => void) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, payload }: { id: number | string; payload: UpdateUserPayload }) => userService.update(id, payload),
+    mutationFn: ({ id, payload }: { id: number | string; payload: UpdateUserPayload }) => userManagementService.users.update(id, payload),
     onSuccess: (response) => {
       toast.success(response.message ?? "User updated");
       invalidateUsers(queryClient);
@@ -79,7 +79,7 @@ export function useDeleteUserMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: number | string) => userService.remove(id),
+    mutationFn: (id: number | string) => userManagementService.users.remove(id),
     onSuccess: (response) => {
       toast.success(response.message ?? "User deleted");
       invalidateUsers(queryClient);
@@ -92,7 +92,7 @@ export function useToggleUserMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: number | string) => userService.toggle(id),
+    mutationFn: (id: number | string) => userManagementService.users.toggle(id),
     onSuccess: (response) => {
       toast.success(response.message ?? "User status updated");
       invalidateUsers(queryClient);
@@ -106,7 +106,7 @@ export function useResetUserPasswordMutation(onSuccess?: () => void) {
 
   return useMutation({
     mutationFn: ({ id, payload }: { id: number | string; payload: ResetUserPasswordPayload }) =>
-      userService.resetPassword(id, payload),
+      userManagementService.users.resetPassword(id, payload),
     onSuccess: (response) => {
       toast.success(response.message ?? "Password reset");
       invalidateUsers(queryClient);
@@ -120,7 +120,7 @@ export function useAssignUserRoleMutation(onSuccess?: () => void) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, payload }: { id: number | string; payload: AssignUserRolePayload }) => userService.assignRole(id, payload),
+    mutationFn: ({ id, payload }: { id: number | string; payload: AssignUserRolePayload }) => userManagementService.users.assignRole(id, payload),
     onSuccess: (response) => {
       toast.success(response.message ?? "User role updated");
       invalidateUsers(queryClient);
