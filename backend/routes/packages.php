@@ -21,6 +21,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/package-orders/{id}/start-preparation', [PackageOrderController::class, 'startPreparation']);
     Route::post('/package-orders/{id}/mark-ready', [PackageOrderController::class, 'markReady']);
     Route::post('/package-orders/{id}/deliver', [PackageOrderController::class, 'deliver']);
+    Route::post('/package-orders/{id}/service', [PackageOrderController::class, 'updateService']);
     Route::post('/package-orders/{id}/complete', [PackageOrderController::class, 'complete']);
     Route::post('/package-orders/{id}/cancel', [PackageOrderController::class, 'cancel']);
     Route::post('/package-orders/{id}/payments', [PackageOrderController::class, 'payment']);
