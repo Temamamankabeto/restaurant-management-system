@@ -28,10 +28,11 @@ function parseRoles(raw?: string) {
   try {
     const decoded = decodeURIComponent(raw);
     const parsed = JSON.parse(decoded);
+
     if (Array.isArray(parsed)) return parsed.map((role) => String(role));
     if (typeof parsed === "string") return [parsed];
   } catch {
-    // Fall back to comma-separated role cookies.
+    // fallback below
   }
 
   return raw
@@ -42,7 +43,9 @@ function parseRoles(raw?: string) {
 
 function hasAllowedRole(userRoles: string[], allowedRoles: string[]) {
   const normalizedUserRoles = userRoles.map(normalize);
-  return allowedRoles.some((role) => normalizedUserRoles.includes(normalize(role)));
+  return allowedRoles.some((role) =>
+    normalizedUserRoles.includes(normalize(role))
+  );
 }
 
 export function middleware(request: NextRequest) {
@@ -53,20 +56,25 @@ export function middleware(request: NextRequest) {
   }
 
   const matchedRule = ROUTE_ROLE_RULES.find((rule) =>
-    rule.prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+    rule.prefixes.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+    )
   );
 
   if (!matchedRule) {
     return NextResponse.next();
   }
 
-  const rolesCookie = request.cookies.get("roles")?.value || request.cookies.get("role")?.value;
+  const rolesCookie =
+    request.cookies.get("roles")?.value ||
+    request.cookies.get("role")?.value;
+
   const userRoles = parseRoles(rolesCookie);
 
-  // Current frontend auth stores roles in localStorage, which middleware cannot read.
-  // To avoid breaking existing modules, only enforce route restrictions when role cookies exist.
+  // Now roles are saved to cookies during login.
+  // If roles are missing, redirect to login instead of silently allowing access.
   if (userRoles.length === 0) {
-    return NextResponse.next();
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   if (!hasAllowedRole(userRoles, matchedRule.roles)) {
