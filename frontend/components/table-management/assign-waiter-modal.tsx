@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { useAssignTableWaitersMutation, useTransferTableWaitersMutation } from "@/mutations/table-management";
-import { useTableWaitersQuery } from "@/queries/table-management";
+import { useAssignTableWaitersMutation, useTransferTableWaitersMutation } from "@/hooks/mutations/table-management";
+import { useTableWaitersQuery } from "@/hooks/queries/table-management";
 import type { DiningTable } from "@/types/table-management";
 
 export function AssignWaiterModal({ open, onOpenChange, table, mode = "assign" }: { open: boolean; onOpenChange: (open: boolean) => void; table?: DiningTable | null; mode?: "assign" | "transfer" }) {

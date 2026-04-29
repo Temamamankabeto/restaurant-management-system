@@ -42,8 +42,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { useMenuItemsQuery } from "@/queries/menu-management";
-import { useTablesQuery } from "@/queries/table-management";
+import { useMenuItemsQuery } from "@/hooks/queries/menu-management";
+import { useTablesQuery } from "@/hooks/queries/table-management";
 import {
   useCreditAccountsQuery,
   useCreditOrdersQuery,
@@ -51,7 +51,7 @@ import {
   useOrdersQuery,
   usePrepTicketsQuery,
   useWaitersLiteQuery,
-} from "@/queries/order-management";
+} from "@/hooks/queries/order-management";
 import {
   useApproveCreditOrderMutation,
   useConfirmOrderMutation,
@@ -65,7 +65,7 @@ import {
   usePrepTicketActionMutation,
   useRecordBillPaymentMutation,
   useConvertBillToCreditMutation,
-} from "@/mutations/order-management";
+} from "@/hooks/mutations/order-management";
 import type {
   CreditOrder,
   Order,

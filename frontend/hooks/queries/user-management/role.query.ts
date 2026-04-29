@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/common/queryKeys";
 import { roleService } from "@/services/user-management/role.service";
 import type { RoleListParams } from "@/types/user-management/user.type";
+import { queryKeys } from "../queryKeys";
 
 export function useRolesQuery(params: RoleListParams = {}) {
   return useQuery({

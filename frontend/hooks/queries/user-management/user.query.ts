@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/common/queryKeys";
 import { userService } from "@/services/user-management/user.service";
 import type { UserListParams } from "@/types/user-management/user.type";
+import { queryKeys } from "../queryKeys";
 
 export function useUsersQuery(params: UserListParams = {}) {
   return useQuery({

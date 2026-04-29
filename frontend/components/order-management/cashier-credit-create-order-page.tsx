@@ -10,10 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useMenuItemsQuery } from "@/queries/menu-management";
-import { useTablesQuery } from "@/queries/table-management";
-import { useCreditAccountsQuery, useWaitersLiteQuery } from "@/queries/order-management";
-import { useCreateOrderMutation } from "@/mutations/order-management";
+import { useMenuItemsQuery } from "@/hooks/queries/menu-management";
+import { useTablesQuery } from "@/hooks/queries/table-management";
+import { useCreditAccountsQuery, useWaitersLiteQuery } from "@/hooks/queries/order-management";
+import { useCreateOrderMutation } from "@/hooks/mutations/order-management";
 import type { CreditAccount, CreditAccountUser, OrderItemPayload } from "@/types/order-management";
 import { CreateOrderPage as DefaultCreateOrderPage } from "./order-pages";
 

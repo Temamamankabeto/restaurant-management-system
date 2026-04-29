@@ -18,14 +18,14 @@ import {
   usePackageOrderQuery,
   usePackageOrdersQuery,
   usePackagesQuery,
-} from '@/queries/order-management';
+} from '@/hooks/queries/order-management';
 import {
   useCreatePackageMutation,
   useCreatePackageOrderMutation,
   useDeletePackageMutation,
   usePackageOrderActionMutation,
   useSchedulePackageOrderMutation,
-} from '@/mutations/order-management';
+} from '@/hooks/mutations/order-management';
 import type { PaymentType } from '@/types/order-management';
 
 function money(value: unknown) {
