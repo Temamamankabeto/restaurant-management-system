@@ -8,8 +8,9 @@ class PackageOrder extends Model
 {
     protected $fillable = [
         'package_id','customer_id','organization_id','package_order_number','event_name','event_type','guest_count',
-        'event_date','event_time','delivery_location','status','payment_type','credit_status','subtotal','tax',
-        'service_charge','discount','total','paid_amount','balance','deposit_required','notes','created_by',
+        'actual_guests','event_date','event_time','start_time','end_time','venue_section','service_style',
+        'delivery_location','allergen_notes','vegetarian_count','special_notes','service_status','service_progress_note','delay_reason',
+        'status','payment_type','credit_status','subtotal','tax','service_charge','discount','total','paid_amount','balance','deposit_required','notes','created_by',
         'approved_by','approved_at','completed_at',
     ];
 
