@@ -1,6 +1,6 @@
 import axios, { AxiosError, AxiosHeaders, InternalAxiosRequestConfig } from "axios";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}/api`;
 const TOKEN_KEY = "token";
 
 function isBrowser() {
@@ -13,10 +13,16 @@ export function getToken() {
 
 export function clearSession() {
   if (!isBrowser()) return;
+
   localStorage.removeItem("token");
   localStorage.removeItem("user");
   localStorage.removeItem("roles");
   localStorage.removeItem("permissions");
+
+  document.cookie = "token=; Path=/; Max-Age=0; SameSite=Lax";
+  document.cookie = "roles=; Path=/; Max-Age=0; SameSite=Lax";
+  document.cookie = "permissions=; Path=/; Max-Age=0; SameSite=Lax";
+  document.cookie = "user=; Path=/; Max-Age=0; SameSite=Lax";
 }
 
 const api = axios.create({
@@ -31,7 +37,11 @@ const api = axios.create({
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getToken();
-  const headers = config.headers instanceof AxiosHeaders ? config.headers : new AxiosHeaders(config.headers);
+
+  const headers =
+    config.headers instanceof AxiosHeaders
+      ? config.headers
+      : new AxiosHeaders(config.headers);
 
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -45,6 +55,7 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<any>) => {
     const data = error.response?.data;
+
     const message =
       data?.message ||
       (data?.errors ? Object.values(data.errors).flat().join(", ") : null) ||
@@ -53,6 +64,7 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401) {
       clearSession();
+
       if (isBrowser() && !window.location.pathname.includes("/login")) {
         window.location.href = "/login";
       }

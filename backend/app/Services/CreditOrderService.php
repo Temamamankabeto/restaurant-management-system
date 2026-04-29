@@ -7,6 +7,7 @@ use App\Models\CreditAccount;
 use App\Models\CreditAccountUser;
 use App\Models\CreditApprovalLog;
 use App\Models\CreditOrder;
+use App\Models\CreditOrderAuthorizedUser;
 use App\Models\CreditSettlement;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -28,6 +29,13 @@ class CreditOrderService
 
             if (!$account->is_credit_enabled || $account->status !== 'active') {
                 throw new RuntimeException('Credit account is not active or credit is disabled.');
+            }
+
+            $total = round((float) $bill->total, 2);
+            $available = round((float) $account->credit_limit - (float) $account->current_balance, 2);
+
+            if (!$overrideLimit && $total > $available) {
+                throw new RuntimeException('Credit limit exceeded. Remaining limit: ' . number_format($available, 2));
             }
 
             $authorizedUsers = collect();
@@ -56,6 +64,22 @@ class CreditOrderService
                 }
             }
 
+            $allocationAmount = $authorizedUsers->count() > 0
+                ? round($total / max(1, $authorizedUsers->count()), 2)
+                : 0;
+            $allocations = [];
+            $remainingAllocation = $total;
+
+            foreach ($authorizedUsers->values() as $index => $authorizedUser) {
+                $amount = $index === $authorizedUsers->count() - 1
+                    ? round($remainingAllocation, 2)
+                    : $allocationAmount;
+                $remainingAllocation = round($remainingAllocation - $amount, 2);
+
+                $this->assertAuthorizedUserLimit($authorizedUser, $amount, $overrideLimit);
+                $allocations[] = [$authorizedUser, $amount];
+            }
+
             $primaryAuthorizedUser = $authorizedUsers->first();
             $usedByName = $authorizedUsers->isNotEmpty()
                 ? $authorizedUsers->map(fn ($user) => trim($user->full_name . ($user->position ? ' (' . $user->position . ')' : '')))->implode(', ')
@@ -63,13 +87,6 @@ class CreditOrderService
             $usedByPhone = $authorizedUsers->isNotEmpty()
                 ? $authorizedUsers->map(fn ($user) => trim((string) $user->phone))->filter()->implode(', ')
                 : null;
-
-            $total = round((float) $bill->total, 2);
-            $available = round((float) $account->credit_limit - (float) $account->current_balance, 2);
-
-            if (!$overrideLimit && $total > $available) {
-                throw new RuntimeException('Credit limit exceeded. Remaining limit: ' . number_format($available, 2));
-            }
 
             $status = 'credit_approved';
             $creditOrder = CreditOrder::create([
@@ -89,6 +106,19 @@ class CreditOrderService
                 'due_date' => $this->calculateDueDateFromAccount($account),
                 'notes' => $notes,
             ]);
+
+            foreach ($allocations as [$authorizedUser, $amount]) {
+                CreditOrderAuthorizedUser::create([
+                    'credit_order_id' => $creditOrder->id,
+                    'credit_account_id' => $account->id,
+                    'credit_account_user_id' => $authorizedUser->id,
+                    'allocated_amount' => $amount,
+                    'full_name' => $authorizedUser->full_name,
+                    'phone' => $authorizedUser->phone,
+                    'position' => $authorizedUser->position,
+                    'employee_id' => $authorizedUser->employee_id,
+                ]);
+            }
 
             $account->current_balance = round((float) $account->current_balance + $total, 2);
             $account->save();
@@ -115,8 +145,35 @@ class CreditOrderService
                 'note' => $notes,
             ]);
 
-            return $creditOrder->fresh(['account','authorizedUser','order','bill','logs']);
+            return $creditOrder->fresh(['account','authorizedUser','authorizedUsers','order','bill','logs']);
         });
+    }
+
+    private function assertAuthorizedUserLimit(CreditAccountUser $user, float $amount, bool $overrideLimit = false): void
+    {
+        if ($overrideLimit) {
+            return;
+        }
+
+        $dailyLimit = $user->daily_limit !== null ? round((float) $user->daily_limit, 2) : null;
+        $monthlyLimit = $user->monthly_limit !== null ? round((float) $user->monthly_limit, 2) : null;
+
+        $todayUsage = round((float) CreditOrderAuthorizedUser::where('credit_account_user_id', $user->id)
+            ->whereDate('created_at', now()->toDateString())
+            ->sum('allocated_amount'), 2);
+
+        $monthUsage = round((float) CreditOrderAuthorizedUser::where('credit_account_user_id', $user->id)
+            ->whereYear('created_at', now()->year)
+            ->whereMonth('created_at', now()->month)
+            ->sum('allocated_amount'), 2);
+
+        if ($dailyLimit !== null && $dailyLimit > 0 && round($todayUsage + $amount, 2) > $dailyLimit) {
+            throw new RuntimeException("Daily credit limit exceeded for {$user->full_name}. Limit: " . number_format($dailyLimit, 2) . ', used today: ' . number_format($todayUsage, 2));
+        }
+
+        if ($monthlyLimit !== null && $monthlyLimit > 0 && round($monthUsage + $amount, 2) > $monthlyLimit) {
+            throw new RuntimeException("Monthly credit limit exceeded for {$user->full_name}. Limit: " . number_format($monthlyLimit, 2) . ', used this month: ' . number_format($monthUsage, 2));
+        }
     }
 
     private function calculateDueDateFromAccount(CreditAccount $account)
@@ -162,7 +219,7 @@ class CreditOrderService
             $creditOrder->bill->save();
             $creditOrder->order?->update(['credit_status' => $creditOrder->status]);
             CreditApprovalLog::create(['credit_order_id' => $creditOrder->id, 'action' => 'settled', 'actor_id' => $userId, 'note' => $data['notes'] ?? null]);
-            return $creditOrder->fresh(['account','authorizedUser','order','bill','settlements.receiver','logs']);
+            return $creditOrder->fresh(['account','authorizedUser','authorizedUsers','order','bill','settlements.receiver','logs']);
         });
     }
 
