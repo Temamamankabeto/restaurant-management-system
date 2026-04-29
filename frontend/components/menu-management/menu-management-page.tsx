@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { can, menuPermissions } from "@/lib/auth/permissions";
-import { useMenuCategoriesQuery, useMenuItemsQuery } from "@/queries/menu-management";
+import { useMenuCategoriesQuery, useMenuItemsQuery } from "@/hooks/queries/menu-management";
 import {
   useCreateMenuCategoryMutation,
   useCreateMenuItemMutation,
@@ -26,7 +26,7 @@ import {
   useToggleMenuItemMutation,
   useUpdateMenuCategoryMutation,
   useUpdateMenuItemMutation,
-} from "@/mutations/menu-management";
+} from "@/hooks/mutations/menu-management";
 import type { MenuCategory, MenuCategoryPayload, MenuItem, MenuItemPayload, MenuItemParams, MenuType } from "@/types/menu-management";
 
 type Props = { readOnly?: boolean; scope?: "admin" | "food-controller" | "waiter" | "public" };

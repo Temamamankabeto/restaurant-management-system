@@ -7,8 +7,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useCreateTableMutation, useUpdateTableMutation } from "@/mutations/table-management";
-import { useTableWaitersQuery } from "@/queries/table-management";
+import { useCreateTableMutation, useUpdateTableMutation } from "@/hooks/mutations/table-management";
+import { useTableWaitersQuery } from "@/hooks/queries/table-management";
 import type { DiningTable, TablePayload, TableStatus } from "@/types/table-management";
 
 const statuses: TableStatus[] = ["available", "occupied", "reserved", "cleaning"];

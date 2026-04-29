@@ -1,2 +1,2 @@
-export * from "@/queries/user-management/permission.query";
-export * from "@/mutations/user-management/permission.mutation";
+export * from "@/hooks/queries/user-management/permission.query";
+export * from "@/hooks/mutations/user-management/permission.mutation";

@@ -13,7 +13,7 @@ import { TableActionsDropdown } from "./table-actions-dropdown";
 import { TableFormModal } from "./table-form-modal";
 import { TableStatusBadge } from "./table-status-badge";
 import { TransferOrdersModal } from "./transfer-orders-modal";
-import { useTableSectionsQuery, useTableSummaryQuery, useTablesQuery } from "@/queries/table-management";
+import { useTableSectionsQuery, useTableSummaryQuery, useTablesQuery } from "@/hooks/queries/table-management";
 import type { DiningTable, TableListParams, TableStatus } from "@/types/table-management";
 import { can, tablePermissions } from "@/lib/auth/permissions";
 

@@ -11,9 +11,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { roleSchema } from "@/lib/user-management/role.schema";
-import { useAssignRolePermissionsMutation, useCreateRoleMutation, useUpdateRoleMutation } from "@/mutations/user-management/role.mutation";
-import { useRolePermissionCatalogQuery, useRolePermissionsQuery, useRolesQuery } from "@/queries/user-management/role.query";
+import { roleSchema } from "@/lib/schemas/role.schema";
+import { useAssignRolePermissionsMutation, useCreateRoleMutation, useUpdateRoleMutation } from "@/hooks/mutations/user-management/role.mutation";
+import { useRolePermissionCatalogQuery, useRolePermissionsQuery, useRolesQuery } from "@/hooks/queries/user-management/role.query";
 import type { RoleItem, RolePayload } from "@/types/user-management/user.type";
 
 function moduleName(permission: string) {

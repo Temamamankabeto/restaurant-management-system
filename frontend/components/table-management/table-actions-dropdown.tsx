@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useToggleTableMutation, useUpdateTableStatusMutation } from "@/mutations/table-management";
+import { useToggleTableMutation, useUpdateTableStatusMutation } from "@/hooks/mutations/table-management";
 import type { DiningTable, TableStatus } from "@/types/table-management";
 import { can, tablePermissions } from "@/lib/auth/permissions";
 
