@@ -22,10 +22,6 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         destination: `${backendOrigin}/api/:path*`,
       },
-      {
-        source: "/sanctum/:path*",
-        destination: `${backendOrigin}/sanctum/:path*`,
-      },
     ];
   },
 };
