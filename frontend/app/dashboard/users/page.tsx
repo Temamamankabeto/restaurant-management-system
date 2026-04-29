@@ -13,8 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createUserSchema, resetUserPasswordSchema, updateUserSchema } from "@/lib/schemas/user.schema";
-import { useCreateUserMutation, useDeleteUserMutation, useResetUserPasswordMutation, useToggleUserMutation, useUpdateUserMutation } from "@/hooks/mutations/user-management/user.mutation";
-import { useRolesLiteQuery, useUsersQuery } from "@/hooks/queries/user-management/user.query";
+import { useCreateUserMutation, useDeleteUserMutation, useResetUserPasswordMutation, useToggleUserMutation, useUpdateUserMutation } from "@/hooks/user-management/user.mutation";
+import { useRolesLiteQuery, useUsersQuery } from "@/hooks/user-management/user.query";
 import type { CreateUserPayload, UpdateUserPayload, UserItem, UserStatus } from "@/types/user-management/user.type";
 
 const defaultCreateForm: CreateUserPayload = { name: "", email: "", phone: "", password: "", role: "" };
