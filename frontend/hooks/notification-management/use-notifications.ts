@@ -4,12 +4,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { notificationService } from "@/services/notification-management/notification.service";
 import { queryKeys } from "@/lib/queryKeys";
+import { liveRefreshIntervals } from "@/lib/live-refresh";
 import type { NotificationFilters } from "@/types/notification-management/notification.type";
 
 export function useNotificationsQuery(filters: NotificationFilters = {}) {
   return useQuery({
     queryKey: ["notifications", filters],
     queryFn: () => notificationService.list(filters),
+    refetchInterval: liveRefreshIntervals.notifications,
+    refetchIntervalInBackground: true,
   });
 }
 
