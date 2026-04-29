@@ -1,6 +1,6 @@
 import axios, { AxiosError, AxiosHeaders, InternalAxiosRequestConfig } from "axios";
 
-const API_BASE_URL = `${process.env.NEXT_PUBLIC_BACKEND_URL ?? ""}/api`;
+const API_BASE_URL = "/api";
 const TOKEN_KEY = "token";
 
 function isBrowser() {
@@ -28,7 +28,7 @@ export function clearSession() {
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: Number(process.env.NEXT_PUBLIC_API_TIMEOUT ?? 15000),
-  withCredentials: true,
+  withCredentials: false,
   headers: {
     Accept: "application/json",
     "Content-Type": "application/json",
