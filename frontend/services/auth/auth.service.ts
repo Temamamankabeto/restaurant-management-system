@@ -26,6 +26,24 @@ function normalizeLoginResponse(response: unknown): LoginResponse {
   return "data" in value && value.data ? value.data : (value as LoginResponse);
 }
 
+function setCookie(name: string, value: unknown, maxAgeSeconds = 60 * 60 * 24 * 7) {
+  if (typeof document === "undefined") return;
+  const encoded = encodeURIComponent(typeof value === "string" ? value : JSON.stringify(value));
+  document.cookie = `${name}=${encoded}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax`;
+}
+
+function deleteCookie(name: string) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+function clearAuthCookies() {
+  deleteCookie("token");
+  deleteCookie("roles");
+  deleteCookie("permissions");
+  deleteCookie("user");
+}
+
 export const authService = {
   async login(credentials: { email: string; password: string }) {
     const response = await api.post("/auth/login", credentials);
@@ -47,6 +65,7 @@ export const authService = {
       await api.post("/auth/logout");
     } finally {
       clearSession();
+      clearAuthCookies();
     }
   },
 
@@ -56,10 +75,20 @@ export const authService = {
     const user = response.user ?? response.data?.user ?? null;
     const roles = response.roles ?? response.data?.roles ?? user?.roles ?? (user?.role ? [user.role] : []);
     const permissions = response.permissions ?? response.data?.permissions ?? user?.permissions ?? [];
-    if (token) localStorage.setItem("token", token);
-    if (user) localStorage.setItem("user", JSON.stringify(user));
+
+    if (token) {
+      localStorage.setItem("token", token);
+      setCookie("token", token);
+    }
+    if (user) {
+      localStorage.setItem("user", JSON.stringify(user));
+      setCookie("user", user);
+    }
+
     localStorage.setItem("roles", JSON.stringify(roles));
     localStorage.setItem("permissions", JSON.stringify(permissions));
+    setCookie("roles", roles);
+    setCookie("permissions", permissions);
   },
 
   getStoredUser(): AuthUser | null {

@@ -10,7 +10,6 @@ use App\Models\PackageOrderPayment;
 use App\Models\PackageOrderSchedule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 class PackageOrderController extends Controller
 {
@@ -34,6 +33,7 @@ class PackageOrderController extends Controller
 
     public function storePackage(Request $request)
     {
+        // Admin responsibility: package templates, package items and pricing setup.
         $this->requirePermission($request, 'packages.create');
         $data = $this->validatePackage($request);
         $package = DB::transaction(function () use ($data) {
@@ -56,6 +56,7 @@ class PackageOrderController extends Controller
 
     public function updatePackage(Request $request, $id)
     {
+        // Admin responsibility: maintain package template and pricing rules.
         $this->requirePermission($request, 'packages.update');
         $package = Package::findOrFail($id);
         $data = $this->validatePackage($request, true);
@@ -88,9 +89,14 @@ class PackageOrderController extends Controller
         if ($request->filled('status')) $q->where('status', $request->status);
         if ($request->filled('payment_type')) $q->where('payment_type', $request->payment_type);
         if ($request->filled('event_date')) $q->whereDate('event_date', $request->event_date);
+        if ($request->filled('service_style')) $q->where('service_style', $request->service_style);
+        if ($request->filled('venue_section')) $q->where('venue_section', 'like', '%' . trim((string) $request->venue_section) . '%');
         if ($request->filled('search')) {
             $s = trim((string) $request->search);
-            $q->where(fn($x) => $x->where('package_order_number', 'like', "%{$s}%")->orWhere('event_name', 'like', "%{$s}%")->orWhere('delivery_location', 'like', "%{$s}%"));
+            $q->where(fn($x) => $x->where('package_order_number', 'like', "%{$s}%")
+                ->orWhere('event_name', 'like', "%{$s}%")
+                ->orWhere('delivery_location', 'like', "%{$s}%")
+                ->orWhere('venue_section', 'like', "%{$s}%"));
         }
         $rows = $q->paginate(max(1, min((int) $request->query('per_page', 10), 100)));
         return response()->json(['success' => true, 'data' => $rows->items(), 'meta' => $this->meta($rows)]);
@@ -98,6 +104,7 @@ class PackageOrderController extends Controller
 
     public function storeOrder(Request $request)
     {
+        // Manager responsibility: create event booking and capture event details.
         $this->requirePermission($request, 'package.orders.create');
         $data = $request->validate([
             'package_id' => 'nullable|exists:packages,id',
@@ -106,9 +113,17 @@ class PackageOrderController extends Controller
             'event_name' => 'required|string|max:255',
             'event_type' => 'nullable|string|max:100',
             'guest_count' => 'required|integer|min:1',
+            'actual_guests' => 'nullable|integer|min:0',
             'event_date' => 'required|date',
             'event_time' => 'nullable|date_format:H:i',
+            'start_time' => 'nullable|date_format:H:i',
+            'end_time' => 'nullable|date_format:H:i',
+            'venue_section' => 'nullable|string|max:255',
+            'service_style' => 'nullable|in:plated,buffet,family_style,food_stations,takeaway,delivery',
             'delivery_location' => 'nullable|string|max:255',
+            'allergen_notes' => 'nullable|string|max:2000',
+            'vegetarian_count' => 'nullable|integer|min:0',
+            'special_notes' => 'nullable|string|max:2000',
             'payment_type' => 'required|in:cash,card,mobile,transfer,credit',
             'discount' => 'nullable|numeric|min:0',
             'deposit_required' => 'nullable|numeric|min:0',
@@ -130,9 +145,18 @@ class PackageOrderController extends Controller
                 'event_name' => $data['event_name'],
                 'event_type' => $data['event_type'] ?? null,
                 'guest_count' => $data['guest_count'],
+                'actual_guests' => $data['actual_guests'] ?? null,
                 'event_date' => $data['event_date'],
                 'event_time' => $data['event_time'] ?? null,
+                'start_time' => $data['start_time'] ?? null,
+                'end_time' => $data['end_time'] ?? null,
+                'venue_section' => $data['venue_section'] ?? null,
+                'service_style' => $data['service_style'] ?? null,
                 'delivery_location' => $data['delivery_location'] ?? null,
+                'allergen_notes' => $data['allergen_notes'] ?? null,
+                'vegetarian_count' => $data['vegetarian_count'] ?? 0,
+                'special_notes' => $data['special_notes'] ?? null,
+                'service_status' => 'not_started',
                 'status' => 'draft',
                 'payment_type' => $data['payment_type'],
                 'credit_status' => $data['payment_type'] === 'credit' ? 'credit_pending' : null,
@@ -153,7 +177,7 @@ class PackageOrderController extends Controller
             return $order->fresh(['package','items.menuItem','schedule','payments']);
         });
 
-        return response()->json(['success' => true, 'message' => 'Package order created successfully.', 'data' => $order], 201);
+        return response()->json(['success' => true, 'message' => 'Event package booking created successfully.', 'data' => $order], 201);
     }
 
     public function showOrder(Request $request, $id)
@@ -164,29 +188,35 @@ class PackageOrderController extends Controller
 
     public function updateOrder(Request $request, $id)
     {
+        // Manager responsibility: update booking details before operational lock.
         $this->requirePermission($request, 'package.orders.update');
         $order = PackageOrder::findOrFail($id);
         abort_unless(in_array($order->status, ['draft','quoted'], true), 422, 'Only draft or quoted package orders can be edited.');
         $data = $request->validate([
             'event_name' => 'sometimes|string|max:255', 'event_type' => 'nullable|string|max:100', 'guest_count' => 'sometimes|integer|min:1',
-            'event_date' => 'sometimes|date', 'event_time' => 'nullable|date_format:H:i', 'delivery_location' => 'nullable|string|max:255',
+            'actual_guests' => 'nullable|integer|min:0', 'event_date' => 'sometimes|date', 'event_time' => 'nullable|date_format:H:i',
+            'start_time' => 'nullable|date_format:H:i', 'end_time' => 'nullable|date_format:H:i',
+            'venue_section' => 'nullable|string|max:255', 'service_style' => 'nullable|in:plated,buffet,family_style,food_stations,takeaway,delivery',
+            'delivery_location' => 'nullable|string|max:255', 'allergen_notes' => 'nullable|string|max:2000',
+            'vegetarian_count' => 'nullable|integer|min:0', 'special_notes' => 'nullable|string|max:2000',
             'payment_type' => 'sometimes|in:cash,card,mobile,transfer,credit', 'discount' => 'nullable|numeric|min:0',
             'deposit_required' => 'nullable|numeric|min:0', 'notes' => 'nullable|string|max:2000',
         ]);
         $order->update($data);
-        return response()->json(['success' => true, 'message' => 'Package order updated successfully.', 'data' => $order->fresh(['items.menuItem','schedule','payments'])]);
+        return response()->json(['success' => true, 'message' => 'Event package booking updated successfully.', 'data' => $order->fresh(['items.menuItem','schedule','payments'])]);
     }
 
-    public function quote(Request $request, $id) { return $this->transition($request, $id, 'package.orders.update', ['draft'], 'quoted', 'Package order quoted.'); }
-    public function approve(Request $request, $id) { return $this->transition($request, $id, 'package.orders.approve', ['draft','quoted'], 'approved', 'Package order approved.', true); }
-    public function startPreparation(Request $request, $id) { return $this->transition($request, $id, 'package.orders.prepare', ['approved','scheduled'], 'preparing', 'Package order preparation started.'); }
-    public function markReady(Request $request, $id) { return $this->transition($request, $id, 'package.orders.prepare', ['preparing'], 'ready', 'Package order marked ready.'); }
-    public function deliver(Request $request, $id) { return $this->transition($request, $id, 'package.orders.deliver', ['ready'], 'delivered', 'Package order delivered.'); }
-    public function complete(Request $request, $id) { return $this->transition($request, $id, 'package.orders.complete', ['delivered'], 'completed', 'Package order completed.', false, true); }
-    public function cancel(Request $request, $id) { return $this->transition($request, $id, 'package.orders.cancel', ['draft','quoted','approved','scheduled'], 'cancelled', 'Package order cancelled.'); }
+    public function quote(Request $request, $id) { return $this->transition($request, $id, 'package.orders.update', ['draft'], 'quoted', 'Event package order quoted.'); }
+    public function approve(Request $request, $id) { return $this->transition($request, $id, 'package.orders.approve', ['draft','quoted'], 'approved', 'Event package order approved.', true); }
+    public function startPreparation(Request $request, $id) { return $this->transition($request, $id, 'package.orders.prepare', ['approved','scheduled'], 'preparing', 'Event package preparation started.'); }
+    public function markReady(Request $request, $id) { return $this->transition($request, $id, 'package.orders.prepare', ['preparing'], 'ready', 'Event package items marked ready.'); }
+    public function deliver(Request $request, $id) { return $this->transition($request, $id, 'package.orders.deliver', ['ready'], 'delivered', 'Event package delivered.'); }
+    public function complete(Request $request, $id) { return $this->transition($request, $id, 'package.orders.complete', ['delivered'], 'completed', 'Event package order completed.', false, true); }
+    public function cancel(Request $request, $id) { return $this->transition($request, $id, 'package.orders.cancel', ['draft','quoted','approved','scheduled'], 'cancelled', 'Event package order cancelled.'); }
 
     public function schedule(Request $request, $id)
     {
+        // Kitchen Manager responsibility: prep timeline and assigned team/station.
         $this->requirePermission($request, 'package.orders.schedule');
         $order = PackageOrder::findOrFail($id);
         abort_unless(in_array($order->status, ['approved','scheduled'], true), 422, 'Only approved package orders can be scheduled.');
@@ -197,11 +227,32 @@ class PackageOrderController extends Controller
         $data['status'] = 'scheduled';
         PackageOrderSchedule::updateOrCreate(['package_order_id' => $order->id], $data);
         $order->update(['status' => 'scheduled']);
-        return response()->json(['success' => true, 'message' => 'Package order scheduled successfully.', 'data' => $order->fresh(['items.menuItem','schedule'])]);
+        return response()->json(['success' => true, 'message' => 'Event package order scheduled successfully.', 'data' => $order->fresh(['items.menuItem','schedule'])]);
+    }
+
+    public function updateService(Request $request, $id)
+    {
+        // Manager responsibility: supervise event execution, progress, actual guests, delays and service completion.
+        $this->requirePermission($request, 'package.orders.service');
+        $order = PackageOrder::findOrFail($id);
+        abort_unless(in_array($order->status, ['approved','scheduled','preparing','ready','delivered'], true), 422, 'Service progress can only be updated for approved or active event package orders.');
+        $data = $request->validate([
+            'service_status' => 'required|in:not_started,in_progress,delayed,completed',
+            'actual_guests' => 'nullable|integer|min:0',
+            'service_progress_note' => 'nullable|string|max:2000',
+            'delay_reason' => 'nullable|string|max:2000',
+        ]);
+        if (($data['service_status'] ?? null) === 'completed' && $order->status === 'delivered') {
+            $data['completed_at'] = now();
+            $data['status'] = 'completed';
+        }
+        $order->update($data);
+        return response()->json(['success' => true, 'message' => 'Event service progress updated successfully.', 'data' => $order->fresh(['items.menuItem','schedule','payments'])]);
     }
 
     public function payment(Request $request, $id)
     {
+        // Finance responsibility: collect deposits, record payments and settle credit/final balance.
         $this->requirePermission($request, 'package.orders.settle');
         $order = PackageOrder::lockForUpdate()->findOrFail($id);
         $data = $request->validate([
@@ -223,7 +274,7 @@ class PackageOrderController extends Controller
             $locked->save();
             return $locked->fresh(['items.menuItem','schedule','payments.receiver']);
         });
-        return response()->json(['success' => true, 'message' => 'Package order payment recorded successfully.', 'data' => $order], 201);
+        return response()->json(['success' => true, 'message' => 'Package event payment recorded successfully.', 'data' => $order], 201);
     }
 
     public function reportSummary(Request $request)
@@ -235,6 +286,8 @@ class PackageOrderController extends Controller
             'scheduled' => PackageOrder::where('status', 'scheduled')->count(),
             'preparing' => PackageOrder::where('status', 'preparing')->count(),
             'delivered' => PackageOrder::where('status', 'delivered')->count(),
+            'service_in_progress' => PackageOrder::where('service_status', 'in_progress')->count(),
+            'service_delayed' => PackageOrder::where('service_status', 'delayed')->count(),
             'outstanding_balance' => round((float) PackageOrder::sum('balance'), 2),
             'today_events' => PackageOrder::whereDate('event_date', today())->count(),
         ]]);
@@ -288,7 +341,7 @@ class PackageOrderController extends Controller
         abort_unless(in_array($order->status, $allowed, true), 422, 'Invalid package order status transition.');
         $payload = ['status' => $next];
         if ($approve) { $payload['approved_by'] = $request->user()->id; $payload['approved_at'] = now(); if ($order->payment_type === 'credit') $payload['credit_status'] = 'credit_approved'; }
-        if ($complete) $payload['completed_at'] = now();
+        if ($complete) { $payload['completed_at'] = now(); $payload['service_status'] = 'completed'; }
         $order->update($payload);
         return response()->json(['success' => true, 'message' => $message, 'data' => $order->fresh(['items.menuItem','schedule','payments'])]);
     }
