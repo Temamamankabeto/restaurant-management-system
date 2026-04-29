@@ -82,6 +82,7 @@ const roleSidebar = (
 export const sidebarConfig: Record<AppRoleKey, RoleSidebar> = {
   "cafeteria-manager": roleSidebar("cafeteria-manager", Store, Store, [
     { label: "Users", href: "/dashboard/users", permission: "users.read" },
+    { label: "Audit Logs", href: "/dashboard/audit-logs", permission: "audit.read" },
     { label: "Menu Management", href: "/dashboard/modules/menu", permission: "menu.read" },
     { label: "Table Management", href: "/dashboard/modules/tables", permission: "tables.read" },
     { label: "Orders", href: "/dashboard/orders", permission: "orders.read" },
