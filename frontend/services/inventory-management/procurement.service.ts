@@ -1,4 +1,4 @@
-import api from "@/lib/common/axios";
+import api from "@/lib/api";
 import type { InventoryListParams } from "@/types/inventory-management";
 
 export type ProcurementScope = "admin" | "food-controller";
