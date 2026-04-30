@@ -7,18 +7,31 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useCreateTableMutation, useUpdateTableMutation } from "@/hooks/mutations/table-management";
-import { useTableWaitersQuery } from "@/hooks/queries/table-management";
-import type { DiningTable, TablePayload, TableStatus } from "@/types/table-management";
+import {
+  DiningTable,
+  TablePayload,
+  TableStatus,
+  useCreateTableMutation,
+  useTableWaitersQuery,
+  useUpdateTableMutation,
+} from "@/hooks/table-management/table";
 
-const statuses: TableStatus[] = ["available", "occupied", "reserved", "cleaning"];
+const statuses: TableStatus[] = ["available", "occupied", "reserved", "cleaning", "out_of_service"];
 
 function boolValue(value: unknown, fallback = true) {
   if (value === undefined || value === null) return fallback;
   return value === true || value === 1 || value === "1";
 }
 
-export function TableFormModal({ open, onOpenChange, table }: { open: boolean; onOpenChange: (open: boolean) => void; table?: DiningTable | null }) {
+export function TableFormModal({
+  open,
+  onOpenChange,
+  table,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  table?: DiningTable | null;
+}) {
   const isEdit = Boolean(table?.id);
   const { data: waiters = [] } = useTableWaitersQuery();
   const createMutation = useCreateTableMutation(() => onOpenChange(false));
@@ -38,15 +51,15 @@ export function TableFormModal({ open, onOpenChange, table }: { open: boolean; o
   useEffect(() => {
     if (!open) return;
     setForm({
-      table_number: table?.table_number ?? "",
+      table_number: table?.table_number ?? table?.number ?? "",
       name: table?.name ?? "",
       capacity: Number(table?.capacity ?? 4),
       section: table?.section ?? "",
       status: table?.status ?? "available",
-      is_active: boolValue(table?.is_active, true),
+      is_active: boolValue(table?.is_active ?? table?.active, true),
       is_public: boolValue(table?.is_public, true),
       sort_order: Number(table?.sort_order ?? 0),
-      waiter_ids: table?.waiters?.map((waiter) => waiter.id) ?? [],
+      waiter_ids: table?.waiters?.map((waiter) => waiter.id) ?? (table?.waiter_id ? [table.waiter_id] : []),
     });
   }, [open, table]);
 
@@ -54,18 +67,20 @@ export function TableFormModal({ open, onOpenChange, table }: { open: boolean; o
     const current = form.waiter_ids ?? [];
     setForm((prev) => ({
       ...prev,
-      waiter_ids: current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+      waiter_ids: current.includes(id) ? current.filter((item) => item !== id) : [id],
     }));
   }
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    const firstWaiterId = form.waiter_ids?.[0] ?? null;
     const payload: TablePayload = {
       ...form,
       capacity: Number(form.capacity || 1),
       sort_order: Number(form.sort_order ?? 0),
       name: form.name || null,
       section: form.section || null,
+      waiter_id: firstWaiterId,
     };
     if (isEdit && table?.id) updateMutation.mutate({ id: table.id, payload });
     else createMutation.mutate(payload);
@@ -81,30 +96,30 @@ export function TableFormModal({ open, onOpenChange, table }: { open: boolean; o
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Table number</Label>
-              <Input value={form.table_number} onChange={(e) => setForm({ ...form, table_number: e.target.value })} required placeholder="T-01" />
+              <Input value={String(form.table_number ?? "")} onChange={(e) => setForm({ ...form, table_number: e.target.value })} required placeholder="T-01" />
             </div>
             <div className="space-y-2">
               <Label>Name</Label>
-              <Input value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Family Table" />
+              <Input value={String(form.name ?? "")} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Family Table" />
             </div>
             <div className="space-y-2">
               <Label>Capacity</Label>
-              <Input type="number" min={1} value={form.capacity} onChange={(e) => setForm({ ...form, capacity: Number(e.target.value) })} required />
+              <Input type="number" min={1} value={String(form.capacity ?? 1)} onChange={(e) => setForm({ ...form, capacity: Number(e.target.value) })} required />
             </div>
             <div className="space-y-2">
               <Label>Section</Label>
-              <Input value={form.section ?? ""} onChange={(e) => setForm({ ...form, section: e.target.value })} placeholder="Indoor / Outdoor" />
+              <Input value={String(form.section ?? "")} onChange={(e) => setForm({ ...form, section: e.target.value })} placeholder="Indoor / Outdoor" />
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
-              <Select value={form.status} onValueChange={(value) => setForm({ ...form, status: value as TableStatus })}>
+              <Select value={String(form.status ?? "available")} onValueChange={(value) => setForm({ ...form, status: value as TableStatus })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{statuses.map((status) => <SelectItem key={status} value={status}>{status.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label>Sort order</Label>
-              <Input type="number" value={form.sort_order ?? 0} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} />
+              <Input type="number" value={String(form.sort_order ?? 0)} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} />
             </div>
           </div>
 
@@ -120,12 +135,12 @@ export function TableFormModal({ open, onOpenChange, table }: { open: boolean; o
           </div>
 
           <div className="space-y-2">
-            <Label>Assigned waiters</Label>
+            <Label>Assigned waiter</Label>
             <div className="grid max-h-44 gap-2 overflow-auto rounded-xl border p-3 md:grid-cols-2">
               {waiters.length ? waiters.map((waiter) => (
-                <label key={waiter.id} className="flex items-center gap-2 text-sm">
+                <label key={String(waiter.id)} className="flex items-center gap-2 text-sm">
                   <Checkbox checked={(form.waiter_ids ?? []).includes(waiter.id)} onCheckedChange={() => toggleWaiter(waiter.id)} />
-                  {waiter.name}
+                  {waiter.name ?? waiter.full_name ?? waiter.email ?? `Waiter #${waiter.id}`}
                 </label>
               )) : <p className="text-sm text-muted-foreground">No waiter list found.</p>}
             </div>

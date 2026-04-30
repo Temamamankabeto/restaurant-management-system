@@ -19,6 +19,10 @@ function cleanParams(params: Record<string, unknown> = {}) {
   const output: Record<string, unknown> = {};
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined || value === null || value === "" || value === "all") return;
+    if (key === "active" && params.is_active === undefined) {
+      output.is_active = value;
+      return;
+    }
     output[key] = value;
   });
   return output;
@@ -111,12 +115,9 @@ export const tableService = {
     );
 
     const results = await Promise.all([...assignRequests, ...removeRequests]);
-    const assignedCount = payload.table_ids.length;
-    const removedCount = payload.remove_table_ids?.length ?? 0;
-
     return {
       success: true,
-      message: `Updated waiter tables. Assigned: ${assignedCount}, removed: ${removedCount}`,
+      message: `Updated waiter tables. Assigned: ${payload.table_ids.length}, removed: ${payload.remove_table_ids?.length ?? 0}`,
       data: results,
     };
   },

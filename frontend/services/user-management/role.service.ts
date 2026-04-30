@@ -13,14 +13,14 @@ import type {
 function cleanParams<T extends Record<string, unknown>>(params: T = {} as T) {
   const output: Record<string, unknown> = {};
   Object.entries(params).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === "") return;
+    if (value === undefined || value === null || value === "" || value === "all") return;
     output[key] = value;
   });
   return output;
 }
 
 function paginated<T>(body: any): PaginatedResponse<T> {
-  const data = Array.isArray(body?.data) ? body.data : [];
+  const data = Array.isArray(body?.data) ? body.data : Array.isArray(body) ? body : [];
   const meta = body?.meta ?? {};
   return {
     success: body?.success,
@@ -51,8 +51,8 @@ export const roleService = {
     return unwrap<ApiEnvelope<RoleItem>>(response);
   },
 
-  async permissions(search?: string) {
-    const response = await api.get("/admin/role-permissions", { params: cleanParams({ search }) });
+  async permissionCatalog() {
+    const response = await api.get("/admin/role-permissions");
     const body = response.data;
     return Array.isArray(body?.data) ? (body.data as PermissionItem[]) : [];
   },

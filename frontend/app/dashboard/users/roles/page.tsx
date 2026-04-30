@@ -11,9 +11,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  useAllPermissionsQuery,
+  useAssignRolePermissionsMutation,
+  useCreateRoleMutation,
+  useRolePermissionsQuery,
+  useRolesQuery,
+  useUpdateRoleMutation,
+} from "@/hooks";
 import { roleSchema } from "@/lib/schemas/role.schema";
-import { useAssignRolePermissionsMutation, useCreateRoleMutation, useUpdateRoleMutation } from "@/hooks/mutations/user-management/role.mutation";
-import { useRolePermissionCatalogQuery, useRolePermissionsQuery, useRolesQuery } from "@/hooks/queries/user-management/role.query";
 import type { RoleItem, RolePayload } from "@/types/user-management/user.type";
 
 function moduleName(permission: string) {
@@ -31,7 +37,7 @@ export default function RolesPage() {
 
   const params = useMemo(() => ({ search, page, per_page: 10 }), [search, page]);
   const rolesQuery = useRolesQuery(params);
-  const permissionsCatalogQuery = useRolePermissionCatalogQuery();
+  const permissionsCatalogQuery = useAllPermissionsQuery();
   const rolePermissionsQuery = useRolePermissionsQuery(selectedRole?.id);
 
   const createRole = useCreateRoleMutation(() => { setFormOpen(false); setRoleName(""); });

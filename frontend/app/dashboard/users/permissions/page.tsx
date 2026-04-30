@@ -11,9 +11,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  useCreatePermissionMutation,
+  useDeletePermissionMutation,
+  usePermissionsQuery,
+  useUpdatePermissionMutation,
+} from "@/hooks";
 import { permissionSchema } from "@/lib/schemas/permission.schema";
-import { useCreatePermissionMutation, useDeletePermissionMutation, useUpdatePermissionMutation } from "@/hooks/mutations/user-management/permission.mutation";
-import { usePermissionsQuery } from "@/hooks/queries/user-management/permission.query";
 import type { PermissionItem, PermissionPayload } from "@/types/user-management/user.type";
 
 function moduleName(permission: string) {
