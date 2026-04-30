@@ -15,4 +15,8 @@ class PurchaseOrderPolicy
     public function create(User $user): bool { return $this->allows($user, 'purchases.create', 'purchase_orders.create'); }
     public function approve(User $user, PurchaseOrder $model): bool { return $this->allows($user, 'purchases.approve', 'purchase_orders.approve'); }
     public function cancel(User $user, PurchaseOrder $model): bool { return $this->allows($user, 'purchases.approve', 'purchase_orders.approve'); }
+    public function validate(User $user, PurchaseOrder $model): bool
+    {
+        return $this->allows($user, 'purchases.validate', 'purchase_orders.validate', 'recipes.integrity.read');
+    }
 }
