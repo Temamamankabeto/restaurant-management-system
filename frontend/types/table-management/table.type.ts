@@ -48,10 +48,15 @@ export type ApiEnvelope<T> = {
 
 export type TableWaiter = {
   id: number | string;
-  name?: string;
-  full_name?: string;
+  name?: string | null;
+  full_name?: string | null;
+  username?: string | null;
   email?: string | null;
   phone?: string | null;
+  profile_image_url?: string | null;
+  avatar_url?: string | null;
+  role?: string | null;
+  roles?: Array<string | { name?: string | null }>;
   [key: string]: unknown;
 };
 
