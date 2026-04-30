@@ -70,6 +70,8 @@ Route::middleware(['auth:sanctum'])->prefix('food-controller')->group(function (
     Route::get('/purchase-orders/{id}/history', [PurchaseOrderController::class, 'history']);
     Route::post('/purchase-orders', [PurchaseOrderController::class, 'store']);
     Route::post('/purchase-orders/{id}/submit', [PurchaseOrderController::class, 'submit']);
+    Route::post('/purchase-orders/{id}/validate', [PurchaseOrderController::class, 'validateOrder']);
+    Route::post('/purchase-orders/{id}/reject-validation', [PurchaseOrderController::class, 'rejectValidation']);
     Route::post('/purchase-orders/{id}/approve', [PurchaseOrderController::class, 'approve']);
     Route::post('/purchase-orders/{id}/cancel', [PurchaseOrderController::class, 'cancel']);
     Route::get('/stock-receivings', [StockReceivingController::class, 'index']);
