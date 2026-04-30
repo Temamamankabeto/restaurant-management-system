@@ -12,7 +12,7 @@ import {
   useTableWaitersQuery,
   useTransferTableMutation,
   useUnassignTableWaiterMutation,
-} from "@/hook/table-management/table";
+} from "@/hooks/table-management/table";
 
 export function AssignWaiterModal({
   open,

@@ -14,7 +14,7 @@ import {
   useTableWaitersQuery,
   useTablesQuery,
   useUnassignTableWaiterMutation,
-} from "@/hook/table-management/table";
+} from "@/hooks/table-management/table";
 
 function tableLabel(table: DiningTable) {
   return [table.table_number ?? table.number, table.name, table.section ? `(${table.section})` : null]

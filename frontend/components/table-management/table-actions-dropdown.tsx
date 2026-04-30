@@ -15,7 +15,7 @@ import {
   TableStatus,
   useSetTableStatusMutation,
   useToggleTableActiveMutation,
-} from "@/hook/table-management/table";
+} from "@/hooks/table-management/table";
 import { can, tablePermissions } from "@/lib/auth/permissions";
 
 const statuses: TableStatus[] = ["available", "occupied", "reserved", "cleaning", "out_of_service"];
