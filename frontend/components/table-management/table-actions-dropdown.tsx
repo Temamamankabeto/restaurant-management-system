@@ -23,6 +23,7 @@ const statuses: TableStatus[] = ["available", "occupied", "reserved", "cleaning"
 type TableActionsDropdownProps = {
   table: DiningTable;
   onEdit: () => void;
+  onAssign?: () => void;
   onTransfer: () => void;
   onTransferOrders: () => void;
 };
