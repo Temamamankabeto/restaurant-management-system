@@ -102,19 +102,17 @@ export const tableService = {
   },
 
   async assignWaiter(id: number | string, payload: AssignWaiterPayload) {
+    return tableService.assignWaiters(id, { waiter_ids: [payload.waiter_id] });
+  },
+
+  async assignWaiters(id: number | string, payload: AssignWaitersPayload) {
     const response = await api.post(`/admin/tables/${id}/assign`, payload);
     return unwrap<ApiEnvelope<DiningTable>>(response);
   },
 
-  async assignWaiters(id: number | string, payload: AssignWaitersPayload) {
-    const firstWaiterId = payload.waiter_ids?.[0];
-    if (!firstWaiterId) return tableService.unassignWaiters(id, payload);
-    return tableService.assignWaiter(id, { waiter_id: firstWaiterId });
-  },
-
   async bulkAssignTablesToWaiter(payload: BulkAssignTablesPayload) {
     const assignRequests = payload.table_ids.map((tableId) =>
-      tableService.assignWaiter(tableId, { waiter_id: payload.waiter_id })
+      tableService.assignWaiters(tableId, { waiter_ids: [payload.waiter_id] })
     );
 
     const removeRequests = (payload.remove_table_ids ?? []).map((tableId) =>
@@ -129,8 +127,9 @@ export const tableService = {
     };
   },
 
-  async unassignWaiters(id: number | string, _payload?: AssignWaitersPayload) {
-    const response = await api.delete(`/admin/tables/${id}/assign`);
+  async unassignWaiters(id: number | string, payload?: AssignWaitersPayload) {
+    const hasSpecificWaiters = Boolean(payload?.waiter_ids?.length);
+    const response = await api.delete(`/admin/tables/${id}/assign`, hasSpecificWaiters ? { data: payload } : undefined);
     return unwrap<ApiEnvelope<DiningTable>>(response);
   },
 
