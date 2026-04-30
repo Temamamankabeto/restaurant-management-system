@@ -49,7 +49,7 @@ import {
   useTransferTableOrdersMutation,
   useUnassignTableWaiterMutation,
   useUpdateTableMutation,
-} from "@/hook/table-management/table";
+} from "@/hooks/table-management/table";
 
 const TABLE_STATUSES: TableStatus[] = ["available", "occupied", "reserved", "cleaning", "out_of_service"];
 
