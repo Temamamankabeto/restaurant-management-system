@@ -18,6 +18,7 @@ import {
   DiningTable,
   TableListParams,
   TableStatus,
+  TableWaiter,
   useTableSectionsQuery,
   useTableSummaryQuery,
   useTablesQuery,
@@ -38,10 +39,15 @@ function tableTitle(table: DiningTable) {
   return table.table_number ?? table.number ?? table.name ?? `Table #${table.id}`;
 }
 
+function waiterDisplayName(waiter?: TableWaiter | null) {
+  if (!waiter?.id) return "—";
+  return waiter.name ?? waiter.full_name ?? waiter.username ?? waiter.email ?? `Waiter #${waiter.id}`;
+}
+
 function waiterNames(table: DiningTable) {
   const waiters = table.waiters ?? [];
-  if (waiters.length) return waiters.map((waiter) => waiter.name ?? waiter.full_name ?? waiter.email).filter(Boolean).join(", ");
-  return table.waiter?.name ?? table.waiter?.full_name ?? table.assigned_waiter?.name ?? table.assigned_waiter?.full_name ?? "—";
+  if (waiters.length) return waiters.map(waiterDisplayName).filter((name) => name !== "—").join(", ") || "—";
+  return waiterDisplayName(table.waiter ?? table.assigned_waiter ?? null);
 }
 
 export default function TableManagementPage() {
