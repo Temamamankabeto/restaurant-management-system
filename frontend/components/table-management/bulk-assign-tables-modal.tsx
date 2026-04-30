@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DiningTable,
+  TableWaiter,
   useAssignTableWaiterMutation,
   useTableWaitersQuery,
   useTablesQuery,
@@ -26,8 +27,22 @@ function idKey(id: number | string) {
   return String(id);
 }
 
-function assignedWaiterId(table: DiningTable) {
-  return table.waiter_id ?? table.assigned_waiter_id ?? table.waiter?.id ?? null;
+function waiterDisplayName(waiter?: TableWaiter | null) {
+  if (!waiter?.id) return "—";
+  return waiter.name ?? waiter.full_name ?? waiter.username ?? waiter.email ?? `Waiter #${waiter.id}`;
+}
+
+function tableWaiterIds(table: DiningTable) {
+  const ids = [table.waiter_id, table.assigned_waiter_id, table.waiter?.id, table.assigned_waiter?.id, ...(table.waiters ?? []).map((waiter) => waiter.id)];
+  return ids.filter((id): id is number | string => id !== undefined && id !== null).map(idKey);
+}
+
+function isAssignedToWaiter(table: DiningTable, waiterId: string) {
+  return tableWaiterIds(table).includes(idKey(waiterId));
+}
+
+function tableSection(table: DiningTable) {
+  return String(table.section || "Unassigned");
 }
 
 export function BulkAssignTablesModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -39,14 +54,17 @@ export function BulkAssignTablesModal({ open, onOpenChange }: { open: boolean; o
   const [waiterId, setWaiterId] = useState<string>("");
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const [selectedSection, setSelectedSection] = useState<string>("all");
 
   const tables = tablesQuery.data?.data ?? [];
 
+  const sections = useMemo(() => {
+    return Array.from(new Set(tables.map(tableSection))).sort((a, b) => a.localeCompare(b));
+  }, [tables]);
+
   const originallyAssignedTableIds = useMemo(() => {
     if (!waiterId) return [];
-    return tables
-      .filter((table) => idKey(assignedWaiterId(table) ?? "") === idKey(waiterId))
-      .map((table) => idKey(table.id));
+    return tables.filter((table) => isAssignedToWaiter(table, waiterId)).map((table) => idKey(table.id));
   }, [waiterId, tables]);
 
   useEffect(() => {
@@ -54,19 +72,21 @@ export function BulkAssignTablesModal({ open, onOpenChange }: { open: boolean; o
     setWaiterId("");
     setSelectedTableIds([]);
     setSearch("");
+    setSelectedSection("all");
   }, [open]);
 
   const filteredTables = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return tables;
-    return tables.filter((table) => tableLabel(table).toLowerCase().includes(term));
-  }, [search, tables]);
+    return tables.filter((table) => {
+      const matchesSection = selectedSection === "all" || tableSection(table) === selectedSection;
+      const matchesSearch = !term || tableLabel(table).toLowerCase().includes(term);
+      return matchesSection && matchesSearch;
+    });
+  }, [search, selectedSection, tables]);
 
   function handleWaiterChange(value: string) {
     setWaiterId(value);
-    const assigned = tables
-      .filter((table) => idKey(assignedWaiterId(table) ?? "") === idKey(value))
-      .map((table) => idKey(table.id));
+    const assigned = tables.filter((table) => isAssignedToWaiter(table, value)).map((table) => idKey(table.id));
     setSelectedTableIds(assigned);
   }
 
@@ -84,6 +104,18 @@ export function BulkAssignTablesModal({ open, onOpenChange }: { open: boolean; o
       if (!checked) return current.filter((id) => !visibleIds.includes(id));
       return Array.from(new Set([...current, ...visibleIds]));
     });
+  }
+
+  function selectSectionTables() {
+    if (selectedSection === "all") return;
+    const sectionIds = tables.filter((table) => tableSection(table) === selectedSection).map((table) => idKey(table.id));
+    setSelectedTableIds((current) => Array.from(new Set([...current, ...sectionIds])));
+  }
+
+  function clearSectionTables() {
+    if (selectedSection === "all") return;
+    const sectionIds = tables.filter((table) => tableSection(table) === selectedSection).map((table) => idKey(table.id));
+    setSelectedTableIds((current) => current.filter((id) => !sectionIds.includes(id)));
   }
 
   async function submit() {
@@ -139,7 +171,7 @@ export function BulkAssignTablesModal({ open, onOpenChange }: { open: boolean; o
                 <SelectContent>
                   {waiters.map((waiter) => (
                     <SelectItem key={idKey(waiter.id)} value={idKey(waiter.id)}>
-                      {waiter.name ?? waiter.full_name ?? waiter.email ?? `Waiter #${waiter.id}`}
+                      {waiterDisplayName(waiter)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -159,6 +191,23 @@ export function BulkAssignTablesModal({ open, onOpenChange }: { open: boolean; o
                 {selectedTableIds.length} selected{addCount ? `, ${addCount} new` : ""}{removeCount ? `, ${removeCount} removed` : ""}
               </span>
             </div>
+
+            <div className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
+              <Select value={selectedSection} onValueChange={setSelectedSection}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Filter by section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All sections</SelectItem>
+                  {sections.map((section) => (
+                    <SelectItem key={section} value={section}>{section}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button type="button" variant="outline" disabled={selectedSection === "all"} onClick={selectSectionTables}>Select section</Button>
+              <Button type="button" variant="outline" disabled={selectedSection === "all"} onClick={clearSectionTables}>Clear section</Button>
+            </div>
+
             <Input placeholder="Search table, name, or section..." value={search} onChange={(event) => setSearch(event.target.value)} />
             {waiterId ? (
               <p className="text-xs text-muted-foreground">Checked tables will be assigned to this waiter. Unchecked previously assigned tables will be unassigned after saving.</p>
@@ -173,7 +222,7 @@ export function BulkAssignTablesModal({ open, onOpenChange }: { open: boolean; o
                   <p className="text-sm text-muted-foreground">Loading tables...</p>
                 ) : filteredTables.length ? filteredTables.map((table) => {
                   const tableId = idKey(table.id);
-                  const currentWaiter = table.waiter?.name ?? table.waiter?.full_name ?? table.waiter?.email ?? "—";
+                  const currentWaiter = table.waiters?.length ? table.waiters.map(waiterDisplayName).join(", ") : waiterDisplayName(table.waiter ?? table.assigned_waiter ?? null);
                   return (
                     <label key={tableId} className="flex items-start gap-2 rounded-lg p-2 text-sm hover:bg-muted/60">
                       <Checkbox checked={selectedTableIds.includes(tableId)} onCheckedChange={(value) => toggleTable(table.id, Boolean(value))} />
