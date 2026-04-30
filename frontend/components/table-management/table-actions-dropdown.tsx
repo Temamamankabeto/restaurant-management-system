@@ -10,11 +10,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useToggleTableMutation, useUpdateTableStatusMutation } from "@/hooks/mutations/table-management";
-import type { DiningTable, TableStatus } from "@/types/table-management";
+import {
+  DiningTable,
+  TableStatus,
+  useSetTableStatusMutation,
+  useToggleTableActiveMutation,
+} from "@/hook/table-management/table";
 import { can, tablePermissions } from "@/lib/auth/permissions";
 
-const statuses: TableStatus[] = ["available", "occupied", "reserved", "cleaning"];
+const statuses: TableStatus[] = ["available", "occupied", "reserved", "cleaning", "out_of_service"];
 
 type TableActionsDropdownProps = {
   table: DiningTable;
@@ -32,8 +36,8 @@ export function TableActionsDropdown({
   onTransferOrders,
 }: TableActionsDropdownProps) {
   const [open, setOpen] = useState(false);
-  const toggleMutation = useToggleTableMutation();
-  const statusMutation = useUpdateTableStatusMutation();
+  const toggleMutation = useToggleTableActiveMutation();
+  const statusMutation = useSetTableStatusMutation();
 
   function closeThenRun(action: () => void) {
     setOpen(false);
@@ -57,13 +61,13 @@ export function TableActionsDropdown({
 
         {can(tablePermissions.assign) && (
           <DropdownMenuItem onSelect={(event) => { event.preventDefault(); closeThenRun(onAssign); }}>
-            Assign waiters
+            Assign waiter
           </DropdownMenuItem>
         )}
 
         {can(tablePermissions.transfer) && (
           <DropdownMenuItem onSelect={(event) => { event.preventDefault(); closeThenRun(onTransfer); }}>
-            Transfer waiters
+            Transfer table
           </DropdownMenuItem>
         )}
 
@@ -82,7 +86,7 @@ export function TableActionsDropdown({
             onSelect={(event) => {
               event.preventDefault();
               setOpen(false);
-              statusMutation.mutate({ id: table.id, payload: { status } });
+              statusMutation.mutate({ id: table.id, status });
             }}
           >
             Mark {status.replace(/_/g, " ")}
@@ -100,7 +104,7 @@ export function TableActionsDropdown({
                 toggleMutation.mutate(table.id);
               }}
             >
-              {table.is_active ? "Deactivate" : "Activate"}
+              {table.is_active ?? table.active ? "Deactivate" : "Activate"}
             </DropdownMenuItem>
           </>
         )}
