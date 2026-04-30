@@ -14,6 +14,10 @@ import {
   useUnassignTableWaiterMutation,
 } from "@/hooks/table-management/table";
 
+function waiterDisplayName(waiter: any) {
+  return waiter?.name ?? waiter?.full_name ?? waiter?.username ?? waiter?.email ?? `Waiter #${waiter?.id}`;
+}
+
 export function AssignWaiterModal({
   open,
   onOpenChange,
@@ -33,7 +37,13 @@ export function AssignWaiterModal({
 
   useEffect(() => {
     if (!open) return;
-    const currentWaiterId = table?.waiter_id ?? table?.assigned_waiter_id ?? table?.waiter?.id;
+
+    const currentWaiterId =
+      table?.waiter_id ??
+      table?.assigned_waiter_id ??
+      table?.waiter?.id ??
+      table?.assigned_waiter?.id;
+
     setSelected(currentWaiterId ? [currentWaiterId] : []);
   }, [open, table]);
 
@@ -79,7 +89,7 @@ export function AssignWaiterModal({
               waiters.map((waiter) => (
                 <label key={String(waiter.id)} className="flex items-center gap-2 text-sm">
                   <Checkbox checked={selected.includes(waiter.id)} onCheckedChange={() => toggle(waiter.id)} />
-                  {waiter.name ?? waiter.full_name ?? waiter.email ?? `Waiter #${waiter.id}`}
+                  {waiterDisplayName(waiter)}
                 </label>
               ))
             ) : (
