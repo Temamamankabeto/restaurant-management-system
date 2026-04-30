@@ -1,5 +1,5 @@
-import TableManagementPage from "@/components/table-management/table-management-page";
+import { TablesPage } from "@/components/table-management/tables-page";
 
-export default function TableManagementRoutePage() {
-  return <TableManagementPage />;
+export default function TableManagementPage() {
+  return <TablesPage />;
 }
