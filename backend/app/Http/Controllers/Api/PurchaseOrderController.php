@@ -27,7 +27,7 @@ class PurchaseOrderController extends Controller
             ->with(['supplier', 'items.inventoryItem', 'receivings'])
             ->orderBy('id', 'desc');
 
-        if ($request->filled('status')) {
+        if ($request->filled('status') && $request->status !== 'all') {
             $q->where('status', $request->status);
         }
 
@@ -147,8 +147,8 @@ class PurchaseOrderController extends Controller
             $po = PurchaseOrder::lockForUpdate()->findOrFail($id);
             $this->authorize('create', PurchaseOrder::class);
 
-            if ($po->status !== 'draft') {
-                return response()->json(['success' => false, 'message' => 'Only draft purchase orders can be submitted.'], 422);
+            if (! in_array($po->status, ['draft', 'validation_rejected'], true)) {
+                return response()->json(['success' => false, 'message' => 'Only draft or validation-rejected purchase orders can be submitted.'], 422);
             }
 
             $before = $po->toArray();
@@ -159,10 +159,64 @@ class PurchaseOrderController extends Controller
                 'submitted_at' => now(),
             ]);
 
-            $this->recordStatusHistory($po, $fromStatus, 'submitted', $request->user()->id, 'Purchase order submitted');
+            $this->recordStatusHistory($po, $fromStatus, 'submitted', $request->user()->id, 'Purchase order submitted for F&B validation');
             $this->auditLogger->log($request, $request->user()->id, 'PurchaseOrder', $po->id, 'purchase_order_submitted', $before, $po->fresh()->toArray(), 'Purchase order submitted.');
 
             return response()->json(['success' => true, 'data' => $po->fresh()]);
+        });
+    }
+
+    public function validateOrder(Request $request, $id)
+    {
+        $data = $request->validate([
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        return DB::transaction(function () use ($request, $id, $data) {
+            $po = PurchaseOrder::lockForUpdate()->findOrFail($id);
+            $this->authorize('validate', $po);
+
+            if ($po->status !== 'submitted') {
+                return response()->json(['success' => false, 'message' => 'Only submitted purchase requests can be validated by F&B Controller.'], 422);
+            }
+
+            $before = $po->toArray();
+            $fromStatus = $po->status;
+            $note = $data['note'] ?? 'F&B Controller validated recipe and inventory links';
+
+            $po->update(['status' => 'fb_validated']);
+
+            $this->recordStatusHistory($po, $fromStatus, 'fb_validated', $request->user()->id, $note);
+            $this->notificationService->notifyUsersByPermission('purchase_orders.approve', 'Purchase request validated', "Purchase order {$po->po_number} is ready for manager approval.", ['kind' => 'purchase_order_fb_validated', 'purchase_order_id' => $po->id]);
+            $this->auditLogger->log($request, $request->user()->id, 'PurchaseOrder', $po->id, 'purchase_order_fb_validated', $before, $po->fresh()->toArray(), 'Purchase order validated by F&B Controller.');
+
+            return response()->json(['success' => true, 'data' => $po->fresh()->load(['supplier', 'items.inventoryItem', 'receivings'])]);
+        });
+    }
+
+    public function rejectValidation(Request $request, $id)
+    {
+        $data = $request->validate([
+            'reason' => 'required|string|max:1000',
+        ]);
+
+        return DB::transaction(function () use ($request, $id, $data) {
+            $po = PurchaseOrder::lockForUpdate()->findOrFail($id);
+            $this->authorize('validate', $po);
+
+            if ($po->status !== 'submitted') {
+                return response()->json(['success' => false, 'message' => 'Only submitted purchase requests can be rejected by F&B Controller.'], 422);
+            }
+
+            $before = $po->toArray();
+            $fromStatus = $po->status;
+            $po->update(['status' => 'validation_rejected']);
+
+            $this->recordStatusHistory($po, $fromStatus, 'validation_rejected', $request->user()->id, $data['reason']);
+            $this->notificationService->notifyUsersByPermission('purchase_orders.create', 'Purchase request validation rejected', "Purchase order {$po->po_number} needs correction: {$data['reason']}", ['kind' => 'purchase_order_validation_rejected', 'purchase_order_id' => $po->id]);
+            $this->auditLogger->log($request, $request->user()->id, 'PurchaseOrder', $po->id, 'purchase_order_validation_rejected', $before, $po->fresh()->toArray(), 'Purchase order validation rejected by F&B Controller.');
+
+            return response()->json(['success' => true, 'data' => $po->fresh()->load(['supplier', 'items.inventoryItem', 'receivings'])]);
         });
     }
 
@@ -171,8 +225,8 @@ class PurchaseOrderController extends Controller
         return DB::transaction(function () use ($request, $id) {
             $po = PurchaseOrder::lockForUpdate()->findOrFail($id);
             $this->authorize('approve', $po);
-            if (! in_array($po->status, ['draft', 'submitted'], true)) {
-                return response()->json(['success' => false, 'message' => 'Only draft or submitted PO can be approved'], 422);
+            if ($po->status !== 'fb_validated') {
+                return response()->json(['success' => false, 'message' => 'Only F&B validated purchase requests can be approved.'], 422);
             }
 
             $before = $po->toArray();
