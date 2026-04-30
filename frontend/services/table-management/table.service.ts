@@ -1,6 +1,7 @@
 import api, { unwrap } from "@/lib/api";
 import type {
   ApiEnvelope,
+  AssignWaiterPayload,
   AssignWaitersPayload,
   BulkAssignTablesPayload,
   DiningTable,
@@ -100,6 +101,10 @@ export const tableService = {
     return unwrap<ApiEnvelope<DiningTable>>(response);
   },
 
+  async assignWaiter(id: number | string, payload: AssignWaiterPayload) {
+    return tableService.assignWaiters(id, { waiter_ids: [payload.waiter_id] });
+  },
+
   async assignWaiters(id: number | string, payload: AssignWaitersPayload) {
     const response = await api.post(`/admin/tables/${id}/assign`, payload);
     return unwrap<ApiEnvelope<DiningTable>>(response);
@@ -122,8 +127,9 @@ export const tableService = {
     };
   },
 
-  async unassignWaiters(id: number | string, payload: AssignWaitersPayload) {
-    const response = await api.delete(`/admin/tables/${id}/assign`, { data: payload });
+  async unassignWaiters(id: number | string, payload?: AssignWaitersPayload) {
+    const hasSpecificWaiters = Boolean(payload?.waiter_ids?.length);
+    const response = await api.delete(`/admin/tables/${id}/assign`, hasSpecificWaiters ? { data: payload } : undefined);
     return unwrap<ApiEnvelope<DiningTable>>(response);
   },
 

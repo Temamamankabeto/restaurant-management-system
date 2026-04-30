@@ -3,24 +3,65 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { authService } from "@/services/auth/auth.service";
+import { procurementService } from "@/services/inventory-management/procurement.service";
 import { filterSidebarByPermissions, getSidebarForRole } from "@/config/sidebar.config";
+import { normalizeRole } from "@/config/dashboard.config";
 import { cn } from "@/lib/utils";
 
 type SidebarContentProps = {
   collapsed?: boolean;
 };
 
+function MiniBadge({ value }: { value?: number }) {
+  if (!value || value < 1) return null;
+  return <Badge className="ml-2 h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px]">{value > 99 ? "99+" : value}</Badge>;
+}
+
 export default function SidebarContent({ collapsed = false }: SidebarContentProps) {
   const pathname = usePathname();
   const user = authService.getStoredUser();
   const roles = authService.getStoredRoles();
   const role = roles[0] ?? user?.role ?? "Cafeteria Manager";
+  const roleKey = normalizeRole(role);
   const permissions = authService.getStoredPermissions();
 
   const roleSidebar = useMemo(() => getSidebarForRole(role), [role]);
   const sections = filterSidebarByPermissions(roleSidebar, permissions);
+
+  const validationCount = useQuery({
+    queryKey: ["sidebar-purchase-count", "submitted"],
+    queryFn: () => procurementService.purchaseOrders({ status: "submitted", per_page: 1 }, "food-controller"),
+    enabled: !collapsed && roleKey === "fb-controller",
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const approvalCount = useQuery({
+    queryKey: ["sidebar-purchase-count", "fb_validated"],
+    queryFn: () => procurementService.purchaseOrders({ status: "fb_validated", per_page: 1 }, "admin"),
+    enabled: !collapsed && roleKey === "cafeteria-manager",
+    staleTime: 30000,
+    retry: false,
+  });
+
+  const receivingCount = useQuery({
+    queryKey: ["sidebar-purchase-count", "approved"],
+    queryFn: () => procurementService.purchaseOrders({ status: "approved", per_page: 1 }, "admin"),
+    enabled: !collapsed && roleKey === "stock-keeper",
+    staleTime: 30000,
+    retry: false,
+  });
+
+  function purchaseBadgeValue(href: string) {
+    if (href === "/dashboard/purchases/validation") return validationCount.data?.meta.total ?? 0;
+    if (href === "/dashboard/purchases/requests") return approvalCount.data?.meta.total ?? 0;
+    if (href === "/dashboard/purchases/receiving") return receivingCount.data?.meta.total ?? 0;
+    return 0;
+  }
 
   const RoleIcon = roleSidebar.icon;
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
@@ -97,17 +138,19 @@ export default function SidebarContent({ collapsed = false }: SidebarContentProp
                         <div className="ml-6 space-y-1 border-l border-sidebar-border pl-2">
                           {item.children?.map((child) => {
                             const childActive = pathname === child.href;
+                            const badgeValue = purchaseBadgeValue(child.href);
                             return (
                               <Link
                                 key={child.href}
                                 href={child.href}
                                 className={cn(
-                                  "block rounded-lg px-3 py-2 text-sm transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                                  "flex items-center justify-between rounded-lg px-3 py-2 text-sm transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                                   childActive &&
                                     "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground",
                                 )}
                               >
-                                {child.label}
+                                <span className="truncate">{child.label}</span>
+                                <MiniBadge value={badgeValue} />
                               </Link>
                             );
                           })}

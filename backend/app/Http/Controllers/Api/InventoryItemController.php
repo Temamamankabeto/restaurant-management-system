@@ -38,7 +38,6 @@ class InventoryItemController extends Controller
             );
         }
     
-        // ✅ proper status filtering BEFORE paginate
         if ($request->filled('status')) {
     
             switch ($request->status) {
@@ -100,7 +99,7 @@ class InventoryItemController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'nullable|string|max:100|unique:inventory_items,sku',
-            'base_unit' => 'required|in:g,ml,pc',
+            'base_unit' => 'required|in:kg,L,pcs',
             'minimum_quantity' => 'nullable|numeric|min:0',
             'current_stock' => 'nullable|numeric|min:0',
             'average_purchase_price' => 'nullable|numeric|min:0',
@@ -131,7 +130,7 @@ class InventoryItemController extends Controller
         $data = $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'sku' => 'sometimes|nullable|string|max:100|unique:inventory_items,sku,' . $row->id,
-            'base_unit' => 'sometimes|required|in:g,ml,pc',
+            'base_unit' => 'sometimes|required|in:kg,L,pcs',
             'minimum_quantity' => 'sometimes|nullable|numeric|min:0',
             'current_stock' => 'sometimes|nullable|numeric|min:0',
             'average_purchase_price' => 'sometimes|nullable|numeric|min:0',

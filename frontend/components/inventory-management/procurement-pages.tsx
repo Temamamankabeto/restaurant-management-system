@@ -179,7 +179,7 @@ export function PurchaseValidationPage() {
 function PurchaseOrderForm({ onDone }: { onDone?: () => void }) {
   const qc = useQueryClient();
   const suppliers = useQuery({ queryKey: ["procurement", "suppliers", "for-po"], queryFn: () => procurementService.suppliers({ per_page: 100 }) });
-  const inventory = useInventoryItemsQuery({ per_page: 100 });
+  const inventory = useInventoryItemsQuery({ per_page: 100, status: "active" }, "admin");
   const items = inventory.data?.data ?? [];
   const [supplierId, setSupplierId] = useState("");
   const [status, setStatus] = useState<"draft" | "submitted">("submitted");
@@ -192,6 +192,8 @@ function PurchaseOrderForm({ onDone }: { onDone?: () => void }) {
   const inventoryById = useMemo(() => new Map(items.map((item) => [String(item.id), item])), [items]);
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (inventory.isLoading) { toast.error("Inventory items are still loading"); return; }
+    if (inventory.isError) { toast.error(extractError(inventory.error, "Could not load inventory items")); return; }
     const form = new FormData(e.currentTarget);
     const cleanLines = lines.filter((line) => line.inventory_item_id && Number(line.quantity) > 0).map((line) => {
       const inv = inventoryById.get(line.inventory_item_id);
@@ -207,12 +209,14 @@ function PurchaseOrderForm({ onDone }: { onDone?: () => void }) {
         <div><Label>Expected date</Label><Input name="expected_date" type="date" /></div>
         <div><Label>Status</Label><Select value={status} onValueChange={(value) => setStatus(value as "draft" | "submitted")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="draft">Draft</SelectItem><SelectItem value="submitted">Submit now</SelectItem></SelectContent></Select></div>
       </div>
+      {inventory.isError && <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Could not load inventory items: {extractError(inventory.error, "Check Admin inventory permission and /admin/inventory/items route.")}</div>}
+      {!inventory.isLoading && !inventory.isError && !items.length && <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">No active inventory items found. Create inventory items first from Admin → Inventory Items.</div>}
       <div className="space-y-2">
         <div className="flex items-center justify-between"><Label>Ordered items</Label><Button type="button" variant="outline" size="sm" onClick={() => setLines([...lines, { inventory_item_id: "", quantity: "", unit_cost: "" }])}><Plus className="mr-2 h-4 w-4" />Add line</Button></div>
         {lines.map((line, index) => {
           const inv = inventoryById.get(line.inventory_item_id);
           return <div key={index} className="grid gap-2 rounded-xl border p-3 md:grid-cols-[1fr_140px_140px_80px]">
-            <Select value={line.inventory_item_id} onValueChange={(value) => setLines((old) => old.map((row, i) => i === index ? { ...row, inventory_item_id: value, unit_cost: row.unit_cost || String(inventoryById.get(value)?.average_purchase_price ?? "") } : row))}><SelectTrigger><SelectValue placeholder="Inventory item" /></SelectTrigger><SelectContent>{items.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name} ({item.base_unit})</SelectItem>)}</SelectContent></Select>
+            <Select value={line.inventory_item_id} onValueChange={(value) => setLines((old) => old.map((row, i) => i === index ? { ...row, inventory_item_id: value, unit_cost: row.unit_cost || String(inventoryById.get(value)?.average_purchase_price ?? "") } : row))} disabled={inventory.isLoading || inventory.isError || !items.length}><SelectTrigger><SelectValue placeholder={inventory.isLoading ? "Loading inventory..." : "Inventory item"} /></SelectTrigger><SelectContent>{items.map((item) => <SelectItem key={item.id} value={String(item.id)}>{item.name} ({item.base_unit})</SelectItem>)}</SelectContent></Select>
             <Input value={line.quantity} onChange={(e) => setLines((old) => old.map((row, i) => i === index ? { ...row, quantity: e.target.value } : row))} placeholder={`Qty ${inv?.base_unit ?? ""}`} type="number" step="0.001" />
             <Input value={line.unit_cost} onChange={(e) => setLines((old) => old.map((row, i) => i === index ? { ...row, unit_cost: e.target.value } : row))} placeholder="Unit cost" type="number" step="0.01" />
             <Button type="button" variant="ghost" onClick={() => setLines((old) => old.filter((_, i) => i !== index))}>Remove</Button>
@@ -220,7 +224,7 @@ function PurchaseOrderForm({ onDone }: { onDone?: () => void }) {
         })}
       </div>
       <div><Label>Notes</Label><Textarea name="notes" /></div>
-      <Button disabled={mutation.isPending} type="submit"><Send className="mr-2 h-4 w-4" />Save request</Button>
+      <Button disabled={mutation.isPending || inventory.isLoading || inventory.isError || !items.length} type="submit"><Send className="mr-2 h-4 w-4" />Save request</Button>
     </form>
   );
 }

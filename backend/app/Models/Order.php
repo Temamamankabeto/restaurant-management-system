@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\InventoryDeductionService;
 use Illuminate\Database\Eloquent\Model;
 
 class Order extends Model
@@ -58,6 +59,23 @@ class Order extends Model
         'voided_at' => 'datetime',
         'credit_account_id' => 'integer',
     ];
+
+    protected static function booted(): void
+    {
+        static::updated(function (Order $order) {
+            if (! $order->wasChanged('status')) {
+                return;
+            }
+
+            if (! in_array($order->status, ['cancelled', 'void'], true)) {
+                return;
+            }
+
+            $userId = auth()->check() ? (int) auth()->id() : null;
+
+            app(InventoryDeductionService::class)->restoreForOrder($order->fresh(['items.menuItem']), $userId);
+        });
+    }
 
     public function items() { return $this->hasMany(OrderItem::class); }
     public function table() { return $this->belongsTo(DiningTable::class, 'table_id'); }

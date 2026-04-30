@@ -14,8 +14,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { can, menuPermissions } from "@/lib/auth/permissions";
-import { useMenuCategoriesQuery, useMenuItemsQuery } from "@/hooks/queries/menu-management";
 import {
+  useMenuCategoriesQuery,
+  useMenuItemsQuery,
   useCreateMenuCategoryMutation,
   useCreateMenuItemMutation,
   useDeleteMenuCategoryMutation,
@@ -26,22 +27,34 @@ import {
   useToggleMenuItemMutation,
   useUpdateMenuCategoryMutation,
   useUpdateMenuItemMutation,
-} from "@/hooks/mutations/menu-management";
+} from "@/hooks/menu-management/menu";
 import type { MenuCategory, MenuCategoryPayload, MenuItem, MenuItemPayload, MenuItemParams, MenuType } from "@/types/menu-management";
 
 type Props = { readOnly?: boolean; scope?: "admin" | "food-controller" | "waiter" | "public" };
 
 const typeOptions: Array<MenuType | "all"> = ["all", "food", "drink"];
 
-function yes(value: unknown) { return value === true || value === 1 || value === "1"; }
-function money(value: unknown) { return Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function yes(value: unknown) {
+  return value === true || value === 1 || value === "1";
+}
+
+function money(value: unknown) {
+  return Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 function ActionBadge({ active, trueText, falseText }: { active: boolean; trueText: string; falseText: string }) {
   return <Badge variant={active ? "default" : "secondary"}>{active ? trueText : falseText}</Badge>;
 }
 
 function CategoryDialog({ open, onOpenChange, category }: { open: boolean; onOpenChange: (open: boolean) => void; category: MenuCategory | null }) {
-  const [payload, setPayload] = useState<MenuCategoryPayload>({ name: category?.name ?? "", type: category?.type ?? "food", description: category?.description ?? "", icon: category?.icon ?? "", sort_order: Number(category?.sort_order ?? 0), is_active: category ? yes(category.is_active) : true });
+  const [payload, setPayload] = useState<MenuCategoryPayload>({
+    name: category?.name ?? "",
+    type: category?.type ?? "food",
+    description: category?.description ?? "",
+    icon: category?.icon ?? "",
+    sort_order: Number(category?.sort_order ?? 0),
+    is_active: category ? yes(category.is_active) : true,
+  });
   const create = useCreateMenuCategoryMutation(() => onOpenChange(false));
   const update = useUpdateMenuCategoryMutation(() => onOpenChange(false));
   const saving = create.isPending || update.isPending;
@@ -51,18 +64,38 @@ function CategoryDialog({ open, onOpenChange, category }: { open: boolean; onOpe
     else create.mutate(payload);
   }
 
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{category ? "Edit category" : "Add category"}</DialogTitle></DialogHeader><div className="space-y-4">
-    <div className="grid gap-2"><Label>Name</Label><Input value={payload.name} onChange={(e) => setPayload({ ...payload, name: e.target.value })} /></div>
-    <div className="grid gap-2"><Label>Type</Label><Select value={payload.type} onValueChange={(value) => setPayload({ ...payload, type: value as MenuType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="food">Food</SelectItem><SelectItem value="drink">Drink</SelectItem></SelectContent></Select></div>
-    <div className="grid gap-2"><Label>Description</Label><Textarea value={payload.description ?? ""} onChange={(e) => setPayload({ ...payload, description: e.target.value })} /></div>
-    <div className="grid gap-2"><Label>Icon</Label><Input value={payload.icon ?? ""} onChange={(e) => setPayload({ ...payload, icon: e.target.value })} /></div>
-    <div className="grid gap-2"><Label>Sort order</Label><Input type="number" value={payload.sort_order ?? 0} onChange={(e) => setPayload({ ...payload, sort_order: Number(e.target.value) })} /></div>
-    <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button disabled={saving || !payload.name} onClick={submit}>{saving ? "Saving..." : "Save"}</Button></div>
-  </div></DialogContent></Dialog>;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>{category ? "Edit category" : "Add category"}</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div className="grid gap-2"><Label>Name</Label><Input value={payload.name} onChange={(e) => setPayload({ ...payload, name: e.target.value })} /></div>
+          <div className="grid gap-2"><Label>Type</Label><Select value={payload.type} onValueChange={(value) => setPayload({ ...payload, type: value as MenuType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="food">Food</SelectItem><SelectItem value="drink">Drink</SelectItem></SelectContent></Select></div>
+          <div className="grid gap-2"><Label>Description</Label><Textarea value={payload.description ?? ""} onChange={(e) => setPayload({ ...payload, description: e.target.value })} /></div>
+          <div className="grid gap-2"><Label>Icon</Label><Input value={payload.icon ?? ""} onChange={(e) => setPayload({ ...payload, icon: e.target.value })} /></div>
+          <div className="grid gap-2"><Label>Sort order</Label><Input type="number" value={payload.sort_order ?? 0} onChange={(e) => setPayload({ ...payload, sort_order: Number(e.target.value) })} /></div>
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button disabled={saving || !payload.name} onClick={submit}>{saving ? "Saving..." : "Save"}</Button></div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function ItemDialog({ open, onOpenChange, item, categories }: { open: boolean; onOpenChange: (open: boolean) => void; item: MenuItem | null; categories: MenuCategory[] }) {
-  const [payload, setPayload] = useState<MenuItemPayload>({ category_id: item?.category_id ?? item?.menu_category_id ?? categories[0]?.id ?? "", name: item?.name ?? "", description: item?.description ?? "", type: item?.type ?? "food", price: Number(item?.price ?? 0), is_available: item ? yes(item.is_available) : true, is_active: item ? yes(item.is_active) : true, menu_mode: item?.menu_mode ?? "normal", has_ingredients: item ? yes(item.has_ingredients) : false, inventory_tracking_mode: item?.inventory_tracking_mode ?? "none", direct_inventory_item_id: item?.direct_inventory_item_id ?? null, image: null });
+  const [payload, setPayload] = useState<MenuItemPayload>({
+    category_id: item?.category_id ?? item?.menu_category_id ?? categories[0]?.id ?? "",
+    name: item?.name ?? "",
+    description: item?.description ?? "",
+    type: item?.type ?? "food",
+    price: Number(item?.price ?? 0),
+    is_available: item ? yes(item.is_available) : true,
+    is_active: item ? yes(item.is_active) : true,
+    menu_mode: item?.menu_mode ?? "normal",
+    has_ingredients: item ? yes(item.has_ingredients) : false,
+    inventory_tracking_mode: item?.inventory_tracking_mode ?? "none",
+    direct_inventory_item_id: item?.direct_inventory_item_id ?? null,
+    image: null,
+  });
   const create = useCreateMenuItemMutation(() => onOpenChange(false));
   const update = useUpdateMenuItemMutation(() => onOpenChange(false));
   const saving = create.isPending || update.isPending;
@@ -72,17 +105,24 @@ function ItemDialog({ open, onOpenChange, item, categories }: { open: boolean; o
     else create.mutate(payload);
   }
 
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{item ? "Edit menu item" : "Add menu item"}</DialogTitle></DialogHeader><div className="grid gap-4 md:grid-cols-2">
-    <div className="grid gap-2"><Label>Name</Label><Input value={payload.name} onChange={(e) => setPayload({ ...payload, name: e.target.value })} /></div>
-    <div className="grid gap-2"><Label>Price</Label><Input type="number" value={payload.price} onChange={(e) => setPayload({ ...payload, price: Number(e.target.value) })} /></div>
-    <div className="grid gap-2"><Label>Type</Label><Select value={payload.type} onValueChange={(value) => setPayload({ ...payload, type: value as MenuType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="food">Food</SelectItem><SelectItem value="drink">Drink</SelectItem></SelectContent></Select></div>
-    <div className="grid gap-2"><Label>Category</Label><Select value={String(payload.category_id)} onValueChange={(value) => setPayload({ ...payload, category_id: value })}><SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger><SelectContent>{categories.map((cat) => <SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>)}</SelectContent></Select></div>
-    <div className="grid gap-2"><Label>Menu mode</Label><Select value={payload.menu_mode} onValueChange={(value) => setPayload({ ...payload, menu_mode: value as "normal" | "spatial" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="normal">Normal</SelectItem><SelectItem value="spatial">Spatial</SelectItem></SelectContent></Select></div>
-    <div className="grid gap-2"><Label>Inventory tracking</Label><Select value={payload.inventory_tracking_mode} onValueChange={(value) => setPayload({ ...payload, inventory_tracking_mode: value as MenuItemPayload["inventory_tracking_mode"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem><SelectItem value="recipe">Recipe</SelectItem><SelectItem value="direct">Direct stock</SelectItem></SelectContent></Select></div>
-    <div className="grid gap-2 md:col-span-2"><Label>Description</Label><Textarea value={payload.description ?? ""} onChange={(e) => setPayload({ ...payload, description: e.target.value })} /></div>
-    <div className="grid gap-2 md:col-span-2"><Label>Image</Label><Input type="file" accept="image/*" onChange={(e) => setPayload({ ...payload, image: e.target.files?.[0] ?? null })} /></div>
-    <div className="flex justify-end gap-2 md:col-span-2"><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button disabled={saving || !payload.name || !payload.category_id} onClick={submit}>{saving ? "Saving..." : "Save"}</Button></div>
-  </div></DialogContent></Dialog>;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader><DialogTitle>{item ? "Edit menu item" : "Add menu item"}</DialogTitle></DialogHeader>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-2"><Label>Name</Label><Input value={payload.name} onChange={(e) => setPayload({ ...payload, name: e.target.value })} /></div>
+          <div className="grid gap-2"><Label>Price</Label><Input type="number" value={payload.price} onChange={(e) => setPayload({ ...payload, price: Number(e.target.value) })} /></div>
+          <div className="grid gap-2"><Label>Type</Label><Select value={payload.type} onValueChange={(value) => setPayload({ ...payload, type: value as MenuType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="food">Food</SelectItem><SelectItem value="drink">Drink</SelectItem></SelectContent></Select></div>
+          <div className="grid gap-2"><Label>Category</Label><Select value={String(payload.category_id)} onValueChange={(value) => setPayload({ ...payload, category_id: value })}><SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger><SelectContent>{categories.map((cat) => <SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>)}</SelectContent></Select></div>
+          <div className="grid gap-2"><Label>Menu mode</Label><Select value={payload.menu_mode} onValueChange={(value) => setPayload({ ...payload, menu_mode: value as "normal" | "spatial" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="normal">Normal</SelectItem><SelectItem value="spatial">Spatial</SelectItem></SelectContent></Select></div>
+          <div className="grid gap-2"><Label>Inventory tracking</Label><Select value={payload.inventory_tracking_mode} onValueChange={(value) => setPayload({ ...payload, inventory_tracking_mode: value as MenuItemPayload["inventory_tracking_mode"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem><SelectItem value="recipe">Recipe</SelectItem><SelectItem value="direct">Direct stock</SelectItem></SelectContent></Select></div>
+          <div className="grid gap-2 md:col-span-2"><Label>Description</Label><Textarea value={payload.description ?? ""} onChange={(e) => setPayload({ ...payload, description: e.target.value })} /></div>
+          <div className="grid gap-2 md:col-span-2"><Label>Image</Label><Input type="file" accept="image/*" onChange={(e) => setPayload({ ...payload, image: e.target.files?.[0] ?? null })} /></div>
+          <div className="flex justify-end gap-2 md:col-span-2"><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button disabled={saving || !payload.name || !payload.category_id} onClick={submit}>{saving ? "Saving..." : "Save"}</Button></div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function MenuManagementPage({ readOnly = false, scope = "admin" }: Props) {

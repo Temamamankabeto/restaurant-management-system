@@ -53,7 +53,7 @@ class StockReceivingController extends Controller
     public function receive(Request $request, $poId)
     {
         $this->authorize('receive', StockReceiving::class);
-    
+
         $data = $request->validate([
             'note' => 'nullable|string|max:1000',
             'delivery_note' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:4096',
@@ -64,36 +64,36 @@ class StockReceivingController extends Controller
             'items.*.expiry_date' => 'nullable|date',
             'items.*.batch_note' => 'nullable|string|max:1000',
         ]);
-    
+
         return DB::transaction(function () use ($request, $poId, $data) {
             $po = PurchaseOrder::with('items')->lockForUpdate()->findOrFail($poId);
-    
+
             if ($po->status === 'cancelled') {
                 return response()->json([
                     'success' => false,
                     'message' => 'Cancelled PO cannot be received',
                 ], 422);
             }
-    
+
             if (! in_array($po->status, ['approved', 'partially_received'], true)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'PO must be approved before receiving',
                 ], 422);
             }
-    
+
             if ($po->items->isEmpty()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'PO has no items to receive',
                 ], 422);
             }
-    
+
             $deliveryNotePath = $data['delivery_note_path'] ?? null;
             if ($request->hasFile('delivery_note')) {
                 $deliveryNotePath = $request->file('delivery_note')->store('deliveries', 'public');
             }
-    
+
             $recv = StockReceiving::create([
                 'purchase_order_id' => $po->id,
                 'status' => 'approved',
@@ -104,66 +104,71 @@ class StockReceivingController extends Controller
                 'note' => $data['note'] ?? null,
                 'delivery_note_path' => $deliveryNotePath,
             ]);
-    
+
+            $createdBatches = [];
+            $createdTransactions = [];
+
             foreach ($data['items'] as $line) {
                 $poi = $po->items->firstWhere('id', $line['purchase_order_item_id']);
-    
+
                 if (! $poi) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Selected item does not belong to the purchase order.',
                     ], 422);
                 }
-    
+
                 $inv = InventoryItem::lockForUpdate()->findOrFail($poi->inventory_item_id);
-    
+
                 $remainingQty = round(
                     (float) $poi->quantity - (float) ($poi->received_quantity ?? 0),
                     3
                 );
-    
+
                 $receivedQty = round((float) $line['quantity'], 3);
-    
+
                 if ($receivedQty <= 0) {
                     return response()->json([
                         'success' => false,
                         'message' => "Received quantity must be greater than zero for item #{$poi->id}.",
                     ], 422);
                 }
-    
+
                 if ($receivedQty > $remainingQty) {
                     return response()->json([
                         'success' => false,
                         'message' => "Received quantity cannot exceed remaining quantity for item #{$poi->id}.",
                     ], 422);
                 }
-    
+
                 $beforeQty = round((float) $inv->current_stock, 3);
                 $afterQty = round($beforeQty + $receivedQty, 3);
-    
+
                 $oldAvg = round((float) ($inv->average_purchase_price ?? 0), 4);
                 $incomingUnitCost = round((float) $poi->unit_cost, 4);
-    
+
                 $oldValue = round($beforeQty * $oldAvg, 4);
                 $incomingValue = round($receivedQty * $incomingUnitCost, 4);
-    
+
                 $newAvg = $afterQty > 0
                     ? round(($oldValue + $incomingValue) / $afterQty, 4)
                     : $incomingUnitCost;
-    
+
+                $beforeInventoryItem = $inv->toArray();
                 $inv->current_stock = $afterQty;
                 $inv->average_purchase_price = $newAvg;
                 $inv->save();
-    
-                InventoryItemBatch::create([
+
+                $batch = InventoryItemBatch::create([
                     'inventory_item_id' => $inv->id,
                     'purchase_price' => $incomingUnitCost,
                     'initial_qty' => $receivedQty,
                     'remaining_qty' => $receivedQty,
                     'expiry_date' => $line['expiry_date'] ?? null,
                 ]);
-    
-                StockReceivingItem::create([
+                $createdBatches[] = $batch;
+
+                $receivingItem = StockReceivingItem::create([
                     'stock_receiving_id' => $recv->id,
                     'purchase_order_item_id' => $poi->id,
                     'inventory_item_id' => $inv->id,
@@ -173,14 +178,26 @@ class StockReceivingController extends Controller
                     'expiry_date' => $line['expiry_date'] ?? null,
                     'batch_note' => $line['batch_note'] ?? null,
                 ]);
-    
+
                 $poi->received_quantity = round(
                     (float) ($poi->received_quantity ?? 0) + $receivedQty,
                     3
                 );
                 $poi->save();
-    
-                InventoryTransaction::create([
+
+                $transactionNote = sprintf(
+                    'Stock received from PO %s. Receiving #%s, receiving item #%s, batch BATCH-%s.',
+                    $po->po_number ?? $po->id,
+                    $recv->id,
+                    $receivingItem->id,
+                    str_pad((string) $batch->id, 5, '0', STR_PAD_LEFT)
+                );
+
+                if (! empty($line['batch_note'])) {
+                    $transactionNote .= ' Note: ' . $line['batch_note'];
+                }
+
+                $tx = InventoryTransaction::create([
                     'inventory_item_id' => $inv->id,
                     'type' => 'in',
                     'quantity' => $receivedQty,
@@ -189,26 +206,38 @@ class StockReceivingController extends Controller
                     'after_quantity' => $afterQty,
                     'reference_type' => 'purchase_receive',
                     'reference_id' => $recv->id,
-                    'note' => 'Stock receiving',
+                    'note' => $transactionNote,
                     'created_by' => $request->user()->id,
                 ]);
+                $createdTransactions[] = $tx;
+
+                $this->auditLogger->log(
+                    $request,
+                    $request->user()->id,
+                    'InventoryItem',
+                    $inv->id,
+                    'stock_received_inventory_updated',
+                    $beforeInventoryItem,
+                    $inv->fresh()->toArray(),
+                    'Inventory stock and average purchase price updated by stock receiving.'
+                );
             }
-    
+
             $po->refresh()->load('items');
-    
+
             $isComplete = $po->items->every(
                 fn ($item) => (float) $item->received_quantity >= (float) $item->quantity
             );
-    
+
             $newStatus = $isComplete ? 'completed' : 'partially_received';
             $before = $po->toArray();
             $fromStatus = $po->status;
-    
+
             $po->update([
                 'status' => $newStatus,
                 'received_at' => now(),
             ]);
-    
+
             PurchaseOrderStatusHistory::create([
                 'purchase_order_id' => $po->id,
                 'from_status' => $fromStatus,
@@ -217,7 +246,7 @@ class StockReceivingController extends Controller
                 'changed_by' => $request->user()->id,
                 'changed_at' => now(),
             ]);
-    
+
             $this->notificationService->notifyUsersByPermission(
                 'inventory.read',
                 'Stock received',
@@ -227,7 +256,7 @@ class StockReceivingController extends Controller
                     'purchase_order_id' => $po->id,
                 ]
             );
-    
+
             $this->auditLogger->log(
                 $request,
                 $request->user()->id,
@@ -236,9 +265,9 @@ class StockReceivingController extends Controller
                 'stock_received',
                 null,
                 $recv->load('items')->toArray(),
-                'Stock receiving recorded.'
+                'Stock receiving recorded with inventory batches and transactions.'
             );
-    
+
             $this->auditLogger->log(
                 $request,
                 $request->user()->id,
@@ -249,12 +278,15 @@ class StockReceivingController extends Controller
                 $po->fresh()->toArray(),
                 'Purchase order received.'
             );
-    
+
             return response()->json([
                 'success' => true,
+                'message' => 'Stock received and inventory updated successfully',
                 'data' => [
                     'receiving' => $recv->load('items.inventoryItem'),
                     'po' => $po->fresh()->load('items', 'receivings.items'),
+                    'batches' => collect($createdBatches)->map->fresh()->values(),
+                    'transactions' => collect($createdTransactions)->map->fresh()->values(),
                 ],
             ]);
         });

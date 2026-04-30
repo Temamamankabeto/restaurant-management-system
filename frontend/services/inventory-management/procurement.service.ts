@@ -1,4 +1,4 @@
-import api from "@/lib/common/axios";
+import api from "@/lib/api";
 import type { InventoryListParams } from "@/types/inventory-management";
 
 export type ProcurementScope = "admin" | "food-controller";
@@ -27,7 +27,16 @@ export interface SupplierPayload {
   is_active?: boolean;
 }
 
-export type PurchaseOrderStatus = "draft" | "submitted" | "approved" | "partially_received" | "completed" | "received" | "cancelled";
+export type PurchaseOrderStatus =
+  | "draft"
+  | "submitted"
+  | "fb_validated"
+  | "validation_rejected"
+  | "approved"
+  | "partially_received"
+  | "completed"
+  | "received"
+  | "cancelled";
 
 export interface PurchaseOrderItemRow {
   id: number;
@@ -135,6 +144,16 @@ export const procurementService = {
 
   async submitPurchaseOrder(id: number | string, scope: ProcurementScope = "admin") {
     const response = await api.post(`${rolePrefix(scope)}/purchase-orders/${id}/submit`);
+    return unwrap<PurchaseOrderRow>(response.data);
+  },
+
+  async validatePurchaseOrder(id: number | string, note = "F&B Controller confirmed validation", scope: ProcurementScope = "food-controller") {
+    const response = await api.post(`${rolePrefix(scope)}/purchase-orders/${id}/validate`, { note });
+    return unwrap<PurchaseOrderRow>(response.data);
+  },
+
+  async rejectPurchaseValidation(id: number | string, reason: string, scope: ProcurementScope = "food-controller") {
+    const response = await api.post(`${rolePrefix(scope)}/purchase-orders/${id}/reject-validation`, { reason });
     return unwrap<PurchaseOrderRow>(response.data);
   },
 
