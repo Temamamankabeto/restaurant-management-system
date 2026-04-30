@@ -14,11 +14,31 @@ use RuntimeException;
 
 class InventoryDeductionService
 {
+    /**
+     * Use this method anywhere an order item is moved to confirmed.
+     * It updates the item status and deducts inventory in the same DB transaction.
+     */
+    public function confirmAndDeductForOrderItem(OrderItem $orderItem, ?int $userId = null): void
+    {
+        DB::transaction(function () use ($orderItem, $userId) {
+            $lockedOrderItem = OrderItem::query()
+                ->lockForUpdate()
+                ->findOrFail($orderItem->id);
+
+            if ($lockedOrderItem->item_status !== 'confirmed') {
+                $lockedOrderItem->item_status = 'confirmed';
+                $lockedOrderItem->save();
+            }
+
+            $this->deductForOrderItem($lockedOrderItem->fresh(), $userId);
+        });
+    }
+
     public function deductForOrderItem(OrderItem $orderItem, ?int $userId = null): void
     {
         DB::transaction(function () use ($orderItem, $userId) {
             $lockedOrderItem = OrderItem::query()
-                ->with(['menuItem.directInventoryItem', 'menuItem.recipe.items.inventoryItem'])
+                ->with(['order', 'menuItem.directInventoryItem', 'menuItem.recipe.items.inventoryItem'])
                 ->lockForUpdate()
                 ->findOrFail($orderItem->id);
 
@@ -40,6 +60,10 @@ class InventoryDeductionService
                 return;
             }
 
+            $orderLabel = $lockedOrderItem->order?->order_number
+                ? $lockedOrderItem->order->order_number
+                : (string) $lockedOrderItem->order_id;
+
             if ($trackingMode === 'direct') {
                 if (! $menuItem->direct_inventory_item_id) {
                     throw new RuntimeException("Direct inventory item is not linked for menu item {$menuItem->name}.");
@@ -58,8 +82,9 @@ class InventoryDeductionService
                     'order_item',
                     $lockedOrderItem->id,
                     sprintf(
-                        'Auto direct deduction on confirmed item for order #%s - %s',
-                        $lockedOrderItem->order_id,
+                        'Auto direct deduction when order item was confirmed. Order: %s, order item #%s, menu item: %s.',
+                        $orderLabel,
+                        $lockedOrderItem->id,
                         $menuItem->name
                     ),
                     $userId
@@ -104,9 +129,10 @@ class InventoryDeductionService
                         'order_item',
                         $lockedOrderItem->id,
                         sprintf(
-                            'Auto recipe deduction on confirmed item for order #%s - %s',
-                            $lockedOrderItem->order_id,
-                            $lockedOrderItem->menuItem?->name ?? 'Unknown item'
+                            'Auto recipe deduction when order item was confirmed. Order: %s, order item #%s, menu item: %s.',
+                            $orderLabel,
+                            $lockedOrderItem->id,
+                            $menuItem->name
                         ),
                         $userId
                     );
@@ -194,7 +220,6 @@ class InventoryDeductionService
                 if ($recipe) {
                     foreach ($recipe->items as $ri) {
                         $inventoryItem = InventoryItem::query()
-                            
                             ->lockForUpdate()
                             ->find($ri->inventory_item_id);
 
@@ -255,6 +280,7 @@ class InventoryDeductionService
         $inventoryItem->save();
 
         $remainingToConsume = $neededQty;
+        $consumedBatches = [];
 
         $batches = InventoryItemBatch::query()
             ->where('inventory_item_id', $inventoryItem->id)
@@ -278,6 +304,20 @@ class InventoryDeductionService
             $batch->remaining_qty = round((float) $batch->remaining_qty - $consume, 3);
             $batch->save();
             $remainingToConsume = round($remainingToConsume - $consume, 3);
+
+            $consumedBatches[] = sprintf(
+                'BATCH-%s:%s',
+                str_pad((string) $batch->id, 5, '0', STR_PAD_LEFT),
+                number_format($consume, 3, '.', '')
+            );
+        }
+
+        if (! empty($consumedBatches)) {
+            $note .= ' Consumed batches: ' . implode(', ', $consumedBatches) . '.';
+        }
+
+        if ($remainingToConsume > 0 && $overrideAllowed) {
+            $note .= ' Deduction used inventory override for shortage quantity: ' . number_format($remainingToConsume, 3, '.', '') . '.';
         }
 
         InventoryTransaction::create([
