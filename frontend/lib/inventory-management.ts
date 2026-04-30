@@ -19,7 +19,7 @@ export function formatMoney(value: unknown) {
   });
 }
 
-export function formatBaseQuantity(value: unknown, unit: BaseUnit | string | null | undefined = "pc") {
-  const safeUnit = unit || "pc";
+export function formatBaseQuantity(value: unknown, unit: BaseUnit | string | null | undefined = "pcs") {
+  const safeUnit = unit || "pcs";
   return `${formatNumber(value)} ${safeUnit}`;
 }
