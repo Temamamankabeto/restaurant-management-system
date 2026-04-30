@@ -23,7 +23,6 @@ const statuses: TableStatus[] = ["available", "occupied", "reserved", "cleaning"
 type TableActionsDropdownProps = {
   table: DiningTable;
   onEdit: () => void;
-  onAssign: () => void;
   onTransfer: () => void;
   onTransferOrders: () => void;
 };
@@ -31,7 +30,6 @@ type TableActionsDropdownProps = {
 export function TableActionsDropdown({
   table,
   onEdit,
-  onAssign,
   onTransfer,
   onTransferOrders,
 }: TableActionsDropdownProps) {
@@ -56,12 +54,6 @@ export function TableActionsDropdown({
         {can(tablePermissions.update) && (
           <DropdownMenuItem onSelect={(event) => { event.preventDefault(); closeThenRun(onEdit); }}>
             Edit table
-          </DropdownMenuItem>
-        )}
-
-        {can(tablePermissions.assign) && (
-          <DropdownMenuItem onSelect={(event) => { event.preventDefault(); closeThenRun(onAssign); }}>
-            Assign waiter
           </DropdownMenuItem>
         )}
 
