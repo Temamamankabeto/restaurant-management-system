@@ -1,6 +1,7 @@
 import api, { unwrap } from "@/lib/api";
 import type {
   ApiEnvelope,
+  AssignWaiterPayload,
   AssignWaitersPayload,
   BulkAssignTablesPayload,
   DiningTable,
@@ -100,14 +101,20 @@ export const tableService = {
     return unwrap<ApiEnvelope<DiningTable>>(response);
   },
 
-  async assignWaiters(id: number | string, payload: AssignWaitersPayload) {
+  async assignWaiter(id: number | string, payload: AssignWaiterPayload) {
     const response = await api.post(`/admin/tables/${id}/assign`, payload);
     return unwrap<ApiEnvelope<DiningTable>>(response);
   },
 
+  async assignWaiters(id: number | string, payload: AssignWaitersPayload) {
+    const firstWaiterId = payload.waiter_ids?.[0];
+    if (!firstWaiterId) return tableService.unassignWaiters(id, payload);
+    return tableService.assignWaiter(id, { waiter_id: firstWaiterId });
+  },
+
   async bulkAssignTablesToWaiter(payload: BulkAssignTablesPayload) {
     const assignRequests = payload.table_ids.map((tableId) =>
-      tableService.assignWaiters(tableId, { waiter_ids: [payload.waiter_id] })
+      tableService.assignWaiter(tableId, { waiter_id: payload.waiter_id })
     );
 
     const removeRequests = (payload.remove_table_ids ?? []).map((tableId) =>
@@ -122,8 +129,8 @@ export const tableService = {
     };
   },
 
-  async unassignWaiters(id: number | string, payload: AssignWaitersPayload) {
-    const response = await api.delete(`/admin/tables/${id}/assign`, { data: payload });
+  async unassignWaiters(id: number | string, _payload?: AssignWaitersPayload) {
+    const response = await api.delete(`/admin/tables/${id}/assign`);
     return unwrap<ApiEnvelope<DiningTable>>(response);
   },
 
