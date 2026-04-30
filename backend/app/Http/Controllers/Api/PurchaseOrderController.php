@@ -72,7 +72,7 @@ class PurchaseOrderController extends Controller
             'items' => 'nullable|array|min:1',
             'items.*.inventory_item_id' => 'required|exists:inventory_items,id|distinct',
             'items.*.quantity' => 'required|numeric|min:0.001',
-            'items.*.base_unit' => 'nullable|in:g,ml,pc',
+            'items.*.base_unit' => 'nullable|in:kg,L,pcs',
             'items.*.unit_cost' => 'required|numeric|min:0',
         ]);
 
