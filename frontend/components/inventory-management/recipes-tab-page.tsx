@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { formatBaseQuantity } from "@/lib/inventory-management";
 import { useCreateRecipeMutation, useUpdateRecipeMutation, useInventoryItemsQuery, useMenuItemsQuery, useRecipesQuery } from "@/hooks/inventory-management";
 import type { BaseUnit, InventoryItem, RecipeIngredient, Recipe } from "@/types/inventory-management";
@@ -39,6 +40,18 @@ function recipeMenuName(recipe: Recipe) {
 
 function recipeItems(recipe: Recipe) {
   return recipe.items ?? recipe.recipe_items ?? [];
+}
+
+function fallbackStockItem(ingredient: RecipeIngredient): InventoryItem {
+  return {
+    id: ingredient.inventory_item_id,
+    name: `Inventory item #${ingredient.inventory_item_id}`,
+    sku: null,
+    base_unit: normalizeUnit(ingredient.base_unit ?? ingredient.unit),
+    unit: normalizeUnit(ingredient.base_unit ?? ingredient.unit),
+    current_stock: 0,
+    minimum_quantity: 0,
+  };
 }
 
 function EmptyState({ title, description }: { title: string; description: string }) {
@@ -74,6 +87,48 @@ export function RecipesTabPage({ scope = "food-controller" }: { scope?: Scope })
     [ingredients],
   );
 
+  function draftIngredientsFromRecipe(recipe?: Recipe): DraftIngredient[] {
+    if (!recipe) return [];
+
+    return recipeItems(recipe).map((ingredient) => {
+      const relationItem = ingredient.inventory_item ?? ingredient.inventoryItem;
+      const stockItem =
+        stockRows.find((item) => Number(item.id) === Number(ingredient.inventory_item_id)) ??
+        relationItem ??
+        fallbackStockItem(ingredient);
+
+      return {
+        inventory_item_id: Number(ingredient.inventory_item_id),
+        quantity: Number(ingredient.quantity),
+        base_unit: itemUnit(stockItem),
+        inventory_item: stockItem,
+      };
+    });
+  }
+
+  function loadRecipeForMenu(menuId: string) {
+    setMenuItemId(menuId);
+    setInventoryItemId("");
+    setQuantity("");
+
+    const existingRecipe = recipes.find((recipe: Recipe) => String(recipe.menu_item_id) === menuId);
+    setIngredients(draftIngredientsFromRecipe(existingRecipe));
+  }
+
+  function loadRecipeForEdit(recipe: Recipe) {
+    setMenuItemId(String(recipe.menu_item_id));
+    setInventoryItemId("");
+    setQuantity("");
+    setIngredients(draftIngredientsFromRecipe(recipe));
+  }
+
+  function clearForm() {
+    setMenuItemId("");
+    setInventoryItemId("");
+    setQuantity("");
+    setIngredients([]);
+  }
+
   function addIngredient() {
     const numericQuantity = Number(quantity);
     if (!selectedItem || !Number.isFinite(numericQuantity) || numericQuantity <= 0) return;
@@ -93,7 +148,7 @@ export function RecipesTabPage({ scope = "food-controller" }: { scope?: Scope })
   }
 
   function removeIngredient(inventoryItemIdToRemove: number) {
-    setIngredients((current) => current.filter((item) => item.inventory_item_id !== inventoryItemIdToRemove));
+    setIngredients((current) => current.filter((item) => Number(item.inventory_item_id) !== Number(inventoryItemIdToRemove)));
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -104,31 +159,34 @@ export function RecipesTabPage({ scope = "food-controller" }: { scope?: Scope })
     const payload = {
       menu_item_id: Number(menuItemId),
       items: ingredients.map((item) => ({
-        inventory_item_id: item.inventory_item_id,
-        quantity: item.quantity,
+        inventory_item_id: Number(item.inventory_item_id),
+        quantity: Number(item.quantity),
       })),
     };
 
     if (existingRecipe) updateRecipe.mutate({ id: existingRecipe.id, payload });
     else createRecipe.mutate(payload);
 
-    setIngredients([]);
     setInventoryItemId("");
     setQuantity("");
   }
+
+  const selectedRecipe = recipes.find((recipe: Recipe) => String(recipe.menu_item_id) === menuItemId);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
       <Card>
         <CardHeader>
-          <CardTitle>Create recipe</CardTitle>
-          <CardDescription>Select a backend menu item, then add ingredients.</CardDescription>
+          <CardTitle>{selectedRecipe ? "Edit recipe" : "Create recipe"}</CardTitle>
+          <CardDescription>
+            Select a menu item. Existing ingredients load automatically, so saving preserves multiple ingredients.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-2">
               <Label>Menu item</Label>
-              <Select value={menuItemId} onValueChange={setMenuItemId}>
+              <Select value={menuItemId} onValueChange={loadRecipeForMenu}>
                 <SelectTrigger><SelectValue placeholder="Select menu item" /></SelectTrigger>
                 <SelectContent>
                   {menuRows.map((menuItem) => (
@@ -167,7 +225,7 @@ export function RecipesTabPage({ scope = "food-controller" }: { scope?: Scope })
 
             {ingredients.length > 0 && (
               <div className="space-y-2 rounded-xl border p-3">
-                <p className="text-sm font-medium">Selected ingredients</p>
+                <p className="text-sm font-medium">Recipe ingredients to save</p>
                 {ingredients.map((ingredient) => (
                   <div key={ingredient.inventory_item_id} className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm">
                     <div>
@@ -182,9 +240,12 @@ export function RecipesTabPage({ scope = "food-controller" }: { scope?: Scope })
               </div>
             )}
 
-            <Button type="submit" disabled={!menuItemId || ingredients.length < 1 || createRecipe.isPending || updateRecipe.isPending}>
-              {createRecipe.isPending || updateRecipe.isPending ? "Saving..." : "Save recipe"}
-            </Button>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={!menuItemId || ingredients.length < 1 || createRecipe.isPending || updateRecipe.isPending}>
+                {createRecipe.isPending || updateRecipe.isPending ? "Saving..." : selectedRecipe ? "Update recipe" : "Save recipe"}
+              </Button>
+              <Button type="button" variant="outline" onClick={clearForm}>Clear</Button>
+            </div>
           </form>
         </CardContent>
       </Card>
@@ -192,7 +253,7 @@ export function RecipesTabPage({ scope = "food-controller" }: { scope?: Scope })
       <Card>
         <CardHeader>
           <CardTitle>Recipes</CardTitle>
-          <CardDescription>Existing recipes from backend.</CardDescription>
+          <CardDescription>Click a recipe to load it into the form for editing.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {recipesQuery.isLoading ? (
@@ -200,8 +261,17 @@ export function RecipesTabPage({ scope = "food-controller" }: { scope?: Scope })
           ) : recipes.length ? (
             recipes.map((recipe) => {
               const items = recipeItems(recipe);
+              const active = String(recipe.menu_item_id) === menuItemId;
               return (
-                <div key={recipe.id} className="rounded-xl border p-4">
+                <button
+                  type="button"
+                  key={recipe.id}
+                  onClick={() => loadRecipeForEdit(recipe)}
+                  className={cn(
+                    "w-full rounded-xl border p-4 text-left transition hover:bg-muted/40",
+                    active && "border-primary bg-primary/5",
+                  )}
+                >
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <p className="font-semibold">{recipeMenuName(recipe)}</p>
                     <Badge variant="secondary">{items.length} ingredient{items.length === 1 ? "" : "s"}</Badge>
@@ -218,7 +288,7 @@ export function RecipesTabPage({ scope = "food-controller" }: { scope?: Scope })
                       );
                     })}
                   </div>
-                </div>
+                </button>
               );
             })
           ) : (
