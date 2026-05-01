@@ -8,6 +8,7 @@ import { InventoryItemsSiPage } from "@/components/inventory-management/inventor
 import { InventoryReportPage } from "@/components/inventory-management/inventory-pages";
 import { PurchaseValidationConfirmPage } from "@/components/inventory-management/purchase-validation-confirm-page";
 import { PurchaseApprovalTabPage } from "@/components/inventory-management/purchase-approval-tab-page";
+import { PurchaseRequestsPage, OrderedItemsReceivingPage } from "@/components/inventory-management/procurement-pages";
 import { RecipesTabPage } from "@/components/inventory-management/recipes-tab-page";
 import { LowStockTabPage } from "@/components/inventory-management/low-stock-tab-page";
 import { usePermissions, inventoryPermissions, purchasePermissions } from "@/lib/auth/permissions";
@@ -39,20 +40,56 @@ export function InventoryWorkspaceTabsPage({ scope = "food-controller" }: { scop
   const storedUser = authService.getStoredUser();
   const storedRoles = authService.getStoredRoles();
   const roleKey = normalizeRole(storedRoles[0] ?? storedUser?.role);
+
   const isManager = roleKey === "cafeteria-manager";
   const isFbController = roleKey === "fb-controller";
+  const isPurchaser = roleKey === "purchaser";
+  const isStockKeeper = roleKey === "stock-keeper";
 
-  const canSeePurchaseTab = isManager
-    ? canAny([purchasePermissions.ordersApprove, purchasePermissions.requestsApprove, purchasePermissions.ordersRead])
-    : canAny([inventoryPermissions.recipeIntegrity, purchasePermissions.ordersRead]);
+  const canSeePurchaseTab =
+    (isManager && canAny([purchasePermissions.ordersApprove, purchasePermissions.requestsApprove, purchasePermissions.ordersRead])) ||
+    (isFbController && canAny([inventoryPermissions.recipeIntegrity, purchasePermissions.ordersRead])) ||
+    (isPurchaser && canAny([purchasePermissions.ordersRead, purchasePermissions.ordersCreate, purchasePermissions.requestsCreate, purchasePermissions.ordersSubmit])) ||
+    (isStockKeeper && canAny([purchasePermissions.ordersReceive, inventoryPermissions.receive]));
 
-  const countStatus = isManager ? "fb_validated" : "submitted";
-  const countScope = isManager ? "admin" : "food-controller";
+  const purchaseTab = isManager
+    ? {
+        value: "purchase-approval",
+        label: "Purchase Approval",
+        status: "fb_validated",
+        scope: "admin" as const,
+        content: <PurchaseApprovalTabPage />,
+      }
+    : isFbController
+      ? {
+          value: "purchase-validation",
+          label: "Purchase Validation",
+          status: "submitted",
+          scope: "food-controller" as const,
+          content: <PurchaseValidationConfirmPage />,
+        }
+      : isPurchaser
+        ? {
+            value: "purchase-requests",
+            label: "Purchase Requests",
+            status: "submitted",
+            scope: "purchaser" as const,
+            content: <PurchaseRequestsPage />,
+          }
+        : isStockKeeper
+          ? {
+              value: "receive-ordered-items",
+              label: "Receive Ordered Items",
+              status: "approved",
+              scope: "stock-keeper" as const,
+              content: <OrderedItemsReceivingPage />,
+            }
+          : null;
 
   const purchaseCount = useQuery({
-    queryKey: ["inventory-tabs", isManager ? "purchase-approval-count" : "purchase-validation-count", countStatus],
-    queryFn: () => procurementService.purchaseOrders({ status: countStatus, per_page: 1 }, countScope),
-    enabled: canSeePurchaseTab,
+    queryKey: ["inventory-tabs", purchaseTab?.value ?? "purchase", purchaseTab?.status ?? "none"],
+    queryFn: () => procurementService.purchaseOrders({ status: purchaseTab?.status, per_page: 1 }, purchaseTab?.scope),
+    enabled: Boolean(canSeePurchaseTab && purchaseTab),
     staleTime: 30000,
     retry: false,
   });
@@ -91,15 +128,15 @@ export function InventoryWorkspaceTabsPage({ scope = "food-controller" }: { scop
       content: <InventoryReportPage type="recipe-integrity" />,
     },
     {
-      value: isManager ? "purchase-approval" : "purchase-validation",
+      value: purchaseTab?.value ?? "purchase",
       label: (
         <>
-          {isManager ? "Purchase Approval" : "Purchase Validation"}
+          {purchaseTab?.label ?? "Purchase"}
           <CountBadge value={pendingPurchaseCount} />
         </>
       ),
-      show: canSeePurchaseTab,
-      content: isManager ? <PurchaseApprovalTabPage /> : <PurchaseValidationConfirmPage />,
+      show: Boolean(canSeePurchaseTab && purchaseTab),
+      content: purchaseTab?.content ?? null,
     },
   ].filter((tab) => tab.show);
 
