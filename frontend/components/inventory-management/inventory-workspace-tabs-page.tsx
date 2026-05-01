@@ -8,6 +8,7 @@ import { InventoryItemsSiPage } from "@/components/inventory-management/inventor
 import { InventoryReportPage } from "@/components/inventory-management/inventory-pages";
 import { PurchaseValidationConfirmPage } from "@/components/inventory-management/purchase-validation-confirm-page";
 import { RecipesTabPage } from "@/components/inventory-management/recipes-tab-page";
+import { LowStockTabPage } from "@/components/inventory-management/low-stock-tab-page";
 import { usePermissions, inventoryPermissions, purchasePermissions } from "@/lib/auth/permissions";
 import { procurementService } from "@/services/inventory-management/procurement.service";
 
@@ -66,7 +67,7 @@ export function InventoryWorkspaceTabsPage({ scope = "food-controller" }: { scop
       value: "low-stock",
       label: "Low Stock",
       show: can(inventoryPermissions.lowStock),
-      content: <InventoryReportPage type="low-stock" />,
+      content: <LowStockTabPage />,
     },
     {
       value: "valuation",
