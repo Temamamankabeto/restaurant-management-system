@@ -1,4 +1,4 @@
-export type BaseUnit = "g" | "ml" | "pc";
+export type BaseUnit = "kg" | "L" | "pcs";
 export type InventoryTransactionType = "in" | "out" | "adjust" | "transfer_in" | "transfer_out" | "waste";
 
 export interface ApiEnvelope<T> {
