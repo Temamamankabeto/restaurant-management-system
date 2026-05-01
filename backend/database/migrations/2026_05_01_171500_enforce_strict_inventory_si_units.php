@@ -7,9 +7,9 @@ return new class extends Migration
 {
     /**
      * Strict inventory units used by the frontend and backend.
-     * Mass  => kg
+     * Mass   => kg
      * Liquid => L
-     * Count => pcs
+     * Count  => pcs
      */
     private array $unitColumns = [
         ['table' => 'inventory_items', 'column' => 'base_unit', 'nullable' => false, 'default' => 'pcs'],
@@ -31,8 +31,18 @@ return new class extends Migration
 
             $table = $definition['table'];
             $column = $definition['column'];
+            $null = $definition['nullable'] ? 'NULL' : 'NOT NULL';
+            $default = $definition['default'] === null ? '' : " DEFAULT '{$definition['default']}'";
 
-            // Convert old frontend units to the strict units before changing ENUM.
+            /**
+             * Important:
+             * Existing columns may be ENUM('g','ml','pc'). MySQL will not allow
+             * UPDATE column='kg' while the ENUM does not contain 'kg'. So first
+             * widen the column to VARCHAR, then convert values, then lock it to
+             * ENUM('kg','L','pcs').
+             */
+            DB::statement("ALTER TABLE `{$table}` MODIFY `{$column}` VARCHAR(20) {$null}{$default}");
+
             DB::statement("UPDATE `{$table}` SET `{$column}` = 'kg' WHERE `{$column}` = 'g'");
             DB::statement("UPDATE `{$table}` SET `{$column}` = 'L' WHERE `{$column}` = 'ml'");
             DB::statement("UPDATE `{$table}` SET `{$column}` = 'pcs' WHERE `{$column}` = 'pc'");
@@ -40,8 +50,10 @@ return new class extends Migration
             // Normalize unsupported text units to pcs to prevent ENUM truncation failures.
             DB::statement("UPDATE `{$table}` SET `{$column}` = 'pcs' WHERE `{$column}` IS NOT NULL AND `{$column}` NOT IN ('kg', 'L', 'pcs')");
 
-            $null = $definition['nullable'] ? 'NULL' : 'NOT NULL';
-            $default = $definition['default'] === null ? '' : " DEFAULT '{$definition['default']}'";
+            // Fill missing values for NOT NULL columns before enforcing ENUM.
+            if (! $definition['nullable']) {
+                DB::statement("UPDATE `{$table}` SET `{$column}` = '{$definition['default']}' WHERE `{$column}` IS NULL OR `{$column}` = ''");
+            }
 
             DB::statement("ALTER TABLE `{$table}` MODIFY `{$column}` ENUM('kg', 'L', 'pcs') {$null}{$default}");
         }
