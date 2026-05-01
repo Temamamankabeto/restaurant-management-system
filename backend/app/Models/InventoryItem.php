@@ -10,6 +10,8 @@ class InventoryItem extends Model
 {
     use HasFactory, SoftDeletes;
 
+    public const BASE_UNITS = ['kg', 'L', 'pcs'];
+
     protected $fillable = [
         'name',
         'sku',
@@ -32,6 +34,21 @@ class InventoryItem extends Model
         'available_stock',
         'expired_stock',
     ];
+
+    public static function allowedBaseUnits(): array
+    {
+        return self::BASE_UNITS;
+    }
+
+    public static function baseUnitValidationRule(): string
+    {
+        return 'in:' . implode(',', self::BASE_UNITS);
+    }
+
+    public function hasSupportedBaseUnit(): bool
+    {
+        return in_array((string) $this->base_unit, self::BASE_UNITS, true);
+    }
 
     public function transactions()
     {
