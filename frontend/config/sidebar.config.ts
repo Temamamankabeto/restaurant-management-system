@@ -100,11 +100,6 @@ export const sidebarConfig: Record<AppRoleKey, RoleSidebar> = {
   "fb-controller": roleSidebar("fb-controller", ClipboardList, ClipboardList, [
     { label: "Menu Management", href: "/dashboard/modules/menu", permission: "menu.read" },
     { label: "Inventory Items", href: "/dashboard/inventory/items", permission: "inventory.read" },
-    { label: "Recipes", href: "/dashboard/inventory/recipes", permission: "recipes.read" },
-    { label: "Low Stock", href: "/dashboard/inventory/low-stock", permission: "inventory.low_stock.read" },
-    { label: "Stock Valuation", href: "/dashboard/inventory/valuation", permission: "inventory.valuation.read" },
-    { label: "Recipe Integrity", href: "/dashboard/inventory/recipe-integrity", permission: "recipes.integrity.read" },
-    { label: "Purchase Validation", href: "/dashboard/purchases/validation", permission: "recipes.integrity.read" },
     { label: "Notifications", href: "/dashboard/modules/notifications" },
   ]),
 
