@@ -1,16 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { ClipboardCheck, Package, ShoppingCart, Utensils, CreditCard, BarChart3 } from "lucide-react";
+import { BarChart3, Package, ShoppingCart, Utensils } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { procurementService } from "@/services/inventory-management/procurement.service";
 
 const moduleCards = [
   {
     title: "Inventory Module",
-    description: "Open manager inventory screen for stock overview, items, movements, valuation, low stock, and recipe integrity.",
+    description: "Open the manager inventory workspace for stock, purchase requests, reports, and recipe checks.",
     href: "/dashboard/cafeteria-manager/inventory",
     icon: Package,
   },
@@ -27,12 +25,6 @@ const moduleCards = [
     icon: ShoppingCart,
   },
   {
-    title: "Payment Module",
-    description: "Payment and billing overview will be added here later.",
-    href: "/dashboard/modules/payments",
-    icon: CreditCard,
-  },
-  {
     title: "Reports Module",
     description: "Operational and financial reports will be expanded here later.",
     href: "/dashboard/modules/reports",
@@ -41,15 +33,6 @@ const moduleCards = [
 ];
 
 export default function CafeteriaManagerDashboardPage() {
-  const query = useQuery({
-    queryKey: ["dashboard", "manager", "purchase", "fb_validated"],
-    queryFn: () => procurementService.purchaseOrders({ status: "fb_validated", per_page: 1 }, "admin"),
-    staleTime: 30000,
-    retry: false,
-  });
-
-  const count = query.data?.meta.total ?? 0;
-
   return (
     <div className="space-y-6">
       <div>
@@ -58,22 +41,6 @@ export default function CafeteriaManagerDashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Purchase Requests Ready</CardTitle>
-            <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <div className="text-3xl font-bold">{query.isLoading ? "..." : count}</div>
-              <p className="mt-1 text-xs text-muted-foreground">Validated requests waiting for manager review.</p>
-            </div>
-            <Button asChild size="sm" className="w-full" variant={count > 0 ? "default" : "outline"}>
-              <Link href="/dashboard/purchases/requests">Open requests</Link>
-            </Button>
-          </CardContent>
-        </Card>
-
         {moduleCards.map((item) => {
           const Icon = item.icon;
           return (
