@@ -15,22 +15,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { formatBaseQuantity, formatMoney } from "@/lib/inventory-management";
 import { can, inventoryPermissions } from "@/lib/auth/permissions";
-import {
-  useAdjustStockMutation,
-  useCreateInventoryItemMutation,
-  useDeleteInventoryItemMutation,
-  useInventoryItemsQuery,
-  useUpdateInventoryItemMutation,
-} from "@/hooks/inventory-management";
+import { useAdjustStockMutation, useCreateInventoryItemMutation, useDeleteInventoryItemMutation, useInventoryItemsQuery, useUpdateInventoryItemMutation } from "@/hooks/inventory-management";
 import type { BaseUnit, InventoryItem } from "@/types/inventory-management";
 
 type Scope = "admin" | "food-controller" | "stock-keeper";
 
-type SiUnitOption = {
-  value: BaseUnit;
-  label: string;
-  hint: string;
-};
+type SiUnitOption = { value: BaseUnit; label: string; hint: string };
 
 const SI_UNIT_OPTIONS: SiUnitOption[] = [
   { value: "kg", label: "kg — kilogram", hint: "Mass items: flour, sugar, meat, coffee, rice, vegetables, and spices." },
@@ -113,15 +103,9 @@ export function InventoryItemsSiPage({ scope = "admin" }: { scope?: Scope }) {
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle>Items</CardTitle>
-              <CardDescription>All stock, minimum quantity, adjustment, and recipe quantities must use the selected base unit.</CardDescription>
-            </div>
+            <div><CardTitle>Items</CardTitle><CardDescription>All stock, minimum quantity, adjustment, purchase, receiving, and recipe quantities must use the selected strict unit.</CardDescription></div>
             <div className="flex flex-col gap-2 md:flex-row md:items-center">
-              <div className="relative md:w-72">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="Search item..." />
-              </div>
+              <div className="relative md:w-72"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="Search item..." /></div>
               <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                 {canCreateInventoryItem() && (
                   <DialogTrigger asChild>
@@ -139,48 +123,14 @@ export function InventoryItemsSiPage({ scope = "admin" }: { scope?: Scope }) {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          {query.isLoading ? <p className="text-sm text-muted-foreground">Loading inventory...</p> : rows.length ? <InventoryItemsTable rows={rows} scope={scope} /> : <EmptyState />}
-        </CardContent>
+        <CardContent>{query.isLoading ? <p className="text-sm text-muted-foreground">Loading inventory...</p> : rows.length ? <InventoryItemsTable rows={rows} scope={scope} /> : <EmptyState />}</CardContent>
       </Card>
     </div>
   );
 }
 
 function InventoryItemsTable({ rows, scope }: { rows: InventoryItem[]; scope: Scope }) {
-  return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Item</TableHead>
-            <TableHead>Base unit</TableHead>
-            <TableHead>Current stock</TableHead>
-            <TableHead>Minimum quantity</TableHead>
-            <TableHead>Avg price / base unit</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => {
-            const unit = itemUnit(row);
-            return (
-              <TableRow key={row.id}>
-                <TableCell><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.sku ?? "No SKU"}</p></TableCell>
-                <TableCell><Badge variant="outline">{unit}</Badge></TableCell>
-                <TableCell>{formatBaseQuantity(row.current_stock, unit)}</TableCell>
-                <TableCell>{formatBaseQuantity(row.minimum_quantity, unit)}</TableCell>
-                <TableCell>{formatMoney(row.average_purchase_price)} ETB / {unit}</TableCell>
-                <TableCell><Badge variant={row.is_active === false ? "destructive" : "secondary"}>{row.is_active === false ? "Inactive" : "Active"}</Badge></TableCell>
-                <TableCell className="text-right"><InventoryRowActions item={row} scope={scope} /></TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
-  );
+  return <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Unit</TableHead><TableHead>Current stock</TableHead><TableHead>Minimum quantity</TableHead><TableHead>Avg price / unit</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{rows.map((row) => { const unit = itemUnit(row); return <TableRow key={row.id}><TableCell><p className="font-medium">{row.name}</p><p className="text-xs text-muted-foreground">{row.sku ?? "No SKU"}</p></TableCell><TableCell><Badge variant="outline">{unit}</Badge></TableCell><TableCell>{formatBaseQuantity(row.current_stock, unit)}</TableCell><TableCell>{formatBaseQuantity(row.minimum_quantity, unit)}</TableCell><TableCell>{formatMoney(row.average_purchase_price)} ETB / {unit}</TableCell><TableCell><Badge variant={row.is_active === false ? "destructive" : "secondary"}>{row.is_active === false ? "Inactive" : "Active"}</Badge></TableCell><TableCell className="text-right"><InventoryRowActions item={row} scope={scope} /></TableCell></TableRow>; })}</TableBody></Table></div>;
 }
 
 function InventoryRowActions({ item, scope }: { item: InventoryItem; scope: Scope }) {
@@ -189,7 +139,6 @@ function InventoryRowActions({ item, scope }: { item: InventoryItem; scope: Scop
   const [deleteOpen, setDeleteOpen] = useState(false);
   const remove = useDeleteInventoryItemMutation(scope);
   const hasAnyAction = canEditInventoryItem() || canAdjustInventoryItem() || canDeleteInventoryItem();
-
   if (!hasAnyAction) return <span className="text-xs text-muted-foreground">View only</span>;
 
   return (
@@ -239,16 +188,7 @@ function InventoryItemSiForm({ item, scope, onDone }: { item: InventoryItem | nu
   const create = useCreateInventoryItemMutation(onDone, scope);
   const update = useUpdateInventoryItemMutation(onDone, scope);
   const initialUnit = itemUnit(item);
-  const [form, setForm] = useState({
-    name: item?.name ?? "",
-    sku: item?.sku ?? "",
-    description: item?.description ?? "",
-    base_unit: initialUnit,
-    current_stock: String(item?.current_stock ?? 0),
-    minimum_quantity: String(item?.minimum_quantity ?? 0),
-    average_purchase_price: String(item?.average_purchase_price ?? 0),
-  });
-
+  const [form, setForm] = useState({ name: item?.name ?? "", sku: item?.sku ?? "", description: item?.description ?? "", base_unit: initialUnit, current_stock: String(item?.current_stock ?? 0), minimum_quantity: String(item?.minimum_quantity ?? 0), average_purchase_price: String(item?.average_purchase_price ?? 0) });
   const selectedUnit = normalizeSiUnit(form.base_unit);
   const selectedHint = SI_UNIT_OPTIONS.find((unit) => unit.value === selectedUnit)?.hint;
 
