@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Edit, MoreHorizontal, Package, Plus, Search, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Edit, MoreHorizontal, Package, Plus, RefreshCw, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,14 +33,14 @@ type SiUnitOption = {
 };
 
 const SI_UNIT_OPTIONS: SiUnitOption[] = [
-  { value: "g", label: "g — gram", hint: "Mass only: flour, sugar, meat, coffee, vegetables." },
-  { value: "ml", label: "ml — milliliter", hint: "Volume only: oil, milk, water, sauces, drinks." },
-  { value: "pc", label: "pc — piece", hint: "Counted item only: egg, bottle, pack, cup, plate." },
+  { value: "kg", label: "kg — kilogram", hint: "Mass items: flour, sugar, meat, coffee, rice, vegetables, and spices." },
+  { value: "L", label: "L — liter", hint: "Liquid items: oil, milk, water, sauces, juice, and other drinks." },
+  { value: "pcs", label: "pcs — pieces", hint: "Counted items: eggs, bottles, packs, cups, plates, cartons, and boxes." },
 ];
 
 function normalizeSiUnit(value?: string | null): BaseUnit {
-  if (value === "g" || value === "ml" || value === "pc") return value;
-  return "pc";
+  if (value === "kg" || value === "L" || value === "pcs") return value;
+  return "pcs";
 }
 
 function itemUnit(item?: Pick<InventoryItem, "base_unit" | "unit"> | null): BaseUnit {
@@ -50,6 +50,20 @@ function itemUnit(item?: Pick<InventoryItem, "base_unit" | "unit"> | null): Base
 function itemDisplayName(item?: Pick<InventoryItem, "name" | "sku"> | null) {
   if (!item) return "—";
   return item.sku ? `${item.name} (${item.sku})` : item.name;
+}
+
+function generateSkuFromName(name: string) {
+  const prefix = (name || "ITEM")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 12) || "ITEM";
+
+  const datePart = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+  const randomPart = Math.random().toString(36).slice(2, 6).toUpperCase();
+
+  return `${prefix}-${datePart}-${randomPart}`;
 }
 
 function canCreateInventoryItem() {
@@ -72,7 +86,7 @@ function EmptyState() {
   return (
     <div className="rounded-xl border border-dashed p-8 text-center">
       <p className="font-medium">No inventory items</p>
-      <p className="mt-1 text-sm text-muted-foreground">Create the first stock item using only g, ml, or pc.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Create the first stock item using kg, L, or pcs.</p>
     </div>
   );
 }
@@ -91,9 +105,9 @@ export function InventoryItemsSiPage({ scope = "admin" }: { scope?: Scope }) {
             <div className="rounded-xl bg-primary/10 p-2 text-primary"><Package className="h-5 w-5" /></div>
             <h1 className="text-2xl font-bold tracking-tight">Inventory Items</h1>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">Create and edit stock items using only system base units: gram, milliliter, or piece.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Create and edit stock items using backend-supported base units.</p>
         </div>
-        <Badge variant="secondary" className="w-fit">Base units only: g / ml / pc</Badge>
+        <Badge variant="secondary" className="w-fit">Base units: kg / L / pcs</Badge>
       </div>
 
       <Card>
@@ -117,7 +131,7 @@ export function InventoryItemsSiPage({ scope = "admin" }: { scope?: Scope }) {
                 <DialogContent className="max-w-2xl">
                   <DialogHeader>
                     <DialogTitle>Create inventory item</DialogTitle>
-                    <DialogDescription>Select one base unit only. Do not use kg, liter, box, carton, dozen, bottle, or pack here.</DialogDescription>
+                    <DialogDescription>SKU is optional. Use Generate SKU when you want the system to create one for you.</DialogDescription>
                   </DialogHeader>
                   <InventoryItemSiForm item={null} scope={scope} onDone={() => setCreateOpen(false)} />
                 </DialogContent>
@@ -195,7 +209,7 @@ function InventoryRowActions({ item, scope }: { item: InventoryItem; scope: Scop
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit inventory item</DialogTitle>
-            <DialogDescription>Only g, ml, or pc are allowed. Existing non-base units are normalized before submit.</DialogDescription>
+            <DialogDescription>SKU is optional. Use Generate SKU when you want to replace or add one.</DialogDescription>
           </DialogHeader>
           <InventoryItemSiForm item={item} scope={scope} onDone={() => setEditOpen(false)} />
         </DialogContent>
@@ -240,31 +254,42 @@ function InventoryItemSiForm({ item, scope, onDone }: { item: InventoryItem | nu
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const sku = form.sku.trim();
     const payload = {
       name: form.name.trim(),
-      sku: form.sku.trim(),
+      sku: sku || undefined,
       description: form.description.trim(),
       base_unit: selectedUnit,
       current_stock: Number(form.current_stock || 0),
       minimum_quantity: Number(form.minimum_quantity || 0),
       average_purchase_price: Number(form.average_purchase_price || 0),
-      is_active: true,
+      is_active: item?.is_active ?? true,
     };
 
-    if (item) update.mutate({ id: item.id, payload, scope });
-    else create.mutate({ payload, scope });
+    if (item) update.mutate({ id: item.id, payload });
+    else create.mutate(payload);
   }
 
   return (
     <form onSubmit={submit} className="space-y-4">
       <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
-        <p className="font-medium">Base-unit rule</p>
-        <p className="text-muted-foreground">Use g for mass, ml for liquid volume, and pc for counted items. Larger business units must be converted before entry.</p>
+        <p className="font-medium">Inventory item rule</p>
+        <p className="text-muted-foreground">Name and base unit are required. SKU can be typed manually or generated automatically.</p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-2"><Label>Name</Label><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-        <div className="space-y-2"><Label>SKU</Label><Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></div>
+        <div className="space-y-2">
+          <Label>SKU</Label>
+          <div className="flex gap-2">
+            <Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="Optional SKU" />
+            <Button type="button" variant="outline" onClick={() => setForm((current) => ({ ...current, sku: generateSkuFromName(current.name) }))}>
+              <RefreshCw className="mr-2 h-4 w-4" /> Generate
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Leave empty when SKU is not needed.</p>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -311,7 +336,7 @@ function AdjustStockSiDialog({ item, scope, onDone }: { item: InventoryItem; sco
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    adjust.mutate({ id: item.id, payload: { quantity: Number(quantity), reason: reason.trim() || "Manual stock adjustment" }, scope });
+    adjust.mutate({ id: item.id, payload: { quantity: Number(quantity), reason: reason.trim() || "Manual stock adjustment" } });
   }
 
   return (
