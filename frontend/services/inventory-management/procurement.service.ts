@@ -79,7 +79,7 @@ export interface PurchaseOrderPayload {
 
 export interface ReceiveOrderPayload {
   note?: string;
-  items: Array<{ purchase_order_item_id: number; quantity: number; unit?: string; expiry_date?: string; batch_note?: string }>;
+  items: Array<{ purchase_order_item_id: number; quantity: number; unit?: string; expiry_date?: string; batch_no?: string; batch_note?: string }>;
 }
 
 export interface PaginatedLike<T> {
