@@ -7,10 +7,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { InventoryItemsSiPage } from "@/components/inventory-management/inventory-items-si-page";
 import { InventoryReportPage } from "@/components/inventory-management/inventory-pages";
 import { PurchaseValidationConfirmPage } from "@/components/inventory-management/purchase-validation-confirm-page";
+import { PurchaseApprovalTabPage } from "@/components/inventory-management/purchase-approval-tab-page";
 import { RecipesTabPage } from "@/components/inventory-management/recipes-tab-page";
 import { LowStockTabPage } from "@/components/inventory-management/low-stock-tab-page";
 import { usePermissions, inventoryPermissions, purchasePermissions } from "@/lib/auth/permissions";
 import { procurementService } from "@/services/inventory-management/procurement.service";
+import { authService } from "@/services/auth/auth.service";
+import { normalizeRole } from "@/config/dashboard.config";
 
 type Scope = "admin" | "food-controller" | "stock-keeper";
 
@@ -33,22 +36,28 @@ function CountBadge({ value }: { value?: number }) {
 
 export function InventoryWorkspaceTabsPage({ scope = "food-controller" }: { scope?: Scope }) {
   const { can, canAny } = usePermissions();
+  const storedUser = authService.getStoredUser();
+  const storedRoles = authService.getStoredRoles();
+  const roleKey = normalizeRole(storedRoles[0] ?? storedUser?.role);
+  const isManager = roleKey === "cafeteria-manager";
+  const isFbController = roleKey === "fb-controller";
 
-  const canSeePurchaseValidation = canAny([
-    inventoryPermissions.recipeIntegrity,
-    purchasePermissions.ordersApprove,
-    purchasePermissions.ordersRead,
-  ]);
+  const canSeePurchaseTab = isManager
+    ? canAny([purchasePermissions.ordersApprove, purchasePermissions.requestsApprove, purchasePermissions.ordersRead])
+    : canAny([inventoryPermissions.recipeIntegrity, purchasePermissions.ordersRead]);
 
-  const purchaseValidationCount = useQuery({
-    queryKey: ["inventory-tabs", "purchase-validation-count", "submitted"],
-    queryFn: () => procurementService.purchaseOrders({ status: "submitted", per_page: 1 }, "food-controller"),
-    enabled: canSeePurchaseValidation,
+  const countStatus = isManager ? "fb_validated" : "submitted";
+  const countScope = isManager ? "admin" : "food-controller";
+
+  const purchaseCount = useQuery({
+    queryKey: ["inventory-tabs", isManager ? "purchase-approval-count" : "purchase-validation-count", countStatus],
+    queryFn: () => procurementService.purchaseOrders({ status: countStatus, per_page: 1 }, countScope),
+    enabled: canSeePurchaseTab,
     staleTime: 30000,
     retry: false,
   });
 
-  const pendingPurchaseValidations = purchaseValidationCount.data?.meta.total ?? 0;
+  const pendingPurchaseCount = purchaseCount.data?.meta.total ?? 0;
 
   const tabs: WorkspaceTab[] = [
     {
@@ -78,19 +87,19 @@ export function InventoryWorkspaceTabsPage({ scope = "food-controller" }: { scop
     {
       value: "recipe-integrity",
       label: "Recipe Integrity",
-      show: can(inventoryPermissions.recipeIntegrity),
+      show: isFbController && can(inventoryPermissions.recipeIntegrity),
       content: <InventoryReportPage type="recipe-integrity" />,
     },
     {
-      value: "purchase-validation",
+      value: isManager ? "purchase-approval" : "purchase-validation",
       label: (
         <>
-          Purchase Validation
-          <CountBadge value={pendingPurchaseValidations} />
+          {isManager ? "Purchase Approval" : "Purchase Validation"}
+          <CountBadge value={pendingPurchaseCount} />
         </>
       ),
-      show: canSeePurchaseValidation,
-      content: <PurchaseValidationConfirmPage />,
+      show: canSeePurchaseTab,
+      content: isManager ? <PurchaseApprovalTabPage /> : <PurchaseValidationConfirmPage />,
     },
   ].filter((tab) => tab.show);
 
