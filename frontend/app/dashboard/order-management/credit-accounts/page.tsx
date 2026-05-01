@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Edit, MoreHorizontal, Plus, Search, Users } from "lucide-react";
 import { toast } from "sonner";
-import api from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,53 +13,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { CreditAccount, CreditAccountPayload, PaginatedResponse } from "@/types/order-management";
+import { useCreditAccountsQuery } from "@/hooks/queries/order-management";
+import {
+  useCreateCreditAccountMutation,
+  useToggleCreditAccountMutation,
+  useUpdateCreditAccountMutation,
+} from "@/hooks/mutations/order-management";
+import type { CreditAccount, CreditAccountPayload } from "@/types/order-management";
 
-function clean(params: Record<string, unknown>) {
-  const out: Record<string, unknown> = {};
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "" && value !== "all") out[key] = value;
-  });
-  return out;
-}
-
-function money(value: unknown) {
-  return Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function date(value?: string) {
-  return value ? new Date(value).toLocaleString() : "—";
-}
-
-function isOrganizationAccount(account?: CreditAccount | null) {
-  return String(account?.account_type ?? "").trim().toLowerCase() === "organization";
-}
-
-async function getCreditAccounts(params: Record<string, unknown>): Promise<PaginatedResponse<CreditAccount>> {
-  const response = await api.get("/credit/accounts", { params: clean(params) });
-  const body = response.data;
-  return {
-    success: body?.success,
-    message: body?.message,
-    data: Array.isArray(body?.data) ? body.data : [],
-    meta: body?.meta ?? { current_page: 1, per_page: 10, total: 0, last_page: 1 },
-  };
-}
-
-async function createCreditAccount(payload: CreditAccountPayload) {
-  const response = await api.post("/credit/accounts", payload);
-  return response.data;
-}
-
-async function updateCreditAccount(id: string | number, payload: CreditAccountPayload) {
-  const response = await api.put(`/credit/accounts/${id}`, payload);
-  return response.data;
-}
-
-async function toggleCreditAccount(id: string | number) {
-  const response = await api.patch(`/credit/accounts/${id}/toggle`);
-  return response.data;
-}
+const accountTypes = ["customer", "organization", "staff", "student"] as const;
+const settlementCycles = ["daily", "weekly", "monthly"] as const;
+const accountStatuses = ["active", "blocked"] as const;
 
 const emptyForm = {
   name: "",
@@ -75,6 +37,25 @@ const emptyForm = {
 
 type FormState = typeof emptyForm;
 
+function money(value: unknown) {
+  return Number(value ?? 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function date(value?: string) {
+  return value ? new Date(value).toLocaleString() : "—";
+}
+
+function isEnabled(value: unknown) {
+  return value === true || value === 1 || value === "1";
+}
+
+function isOrganizationAccount(account?: CreditAccount | null) {
+  return String(account?.account_type ?? "").trim().toLowerCase() === "organization";
+}
+
 function formFromAccount(account: CreditAccount): FormState {
   return {
     name: account.name ?? "",
@@ -82,60 +63,44 @@ function formFromAccount(account: CreditAccount): FormState {
     credit_limit: String(account.credit_limit ?? 0),
     settlement_cycle: String(account.settlement_cycle ?? "monthly").toLowerCase(),
     status: String(account.status ?? "active").toLowerCase(),
-    is_credit_enabled: account.is_credit_enabled ? "1" : "0",
-    requires_approval: account.requires_approval ? "1" : "0",
+    is_credit_enabled: isEnabled(account.is_credit_enabled) ? "1" : "0",
+    requires_approval: isEnabled(account.requires_approval) ? "1" : "0",
+  };
+}
+
+function payloadFromForm(form: FormState): CreditAccountPayload {
+  return {
+    name: form.name.trim(),
+    account_type: form.account_type,
+    credit_limit: Number(form.credit_limit || 0),
+    settlement_cycle: form.settlement_cycle,
+    status: form.status,
+    is_credit_enabled: form.is_credit_enabled === "1",
+    requires_approval: form.requires_approval === "1",
   };
 }
 
 export default function CreditAccountsPage() {
-  const queryClient = useQueryClient();
   const [filters, setFilters] = useState({ page: 1, per_page: 10, search: "", account_type: "all", status: "all" });
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CreditAccount | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
 
-  const query = useQuery({ queryKey: ["credit-accounts-page", filters], queryFn: () => getCreditAccounts(filters) });
+  const query = useCreditAccountsQuery(filters as any);
+  const createMutation = useCreateCreditAccountMutation(() => closeForm());
+  const updateMutation = useUpdateCreditAccountMutation();
+  const toggleMutation = useToggleCreditAccountMutation();
+
   const rows = query.data?.data ?? [];
   const meta = query.data?.meta;
-
-  const saveMutation = useMutation({
-    mutationFn: () => {
-      const payload: CreditAccountPayload = {
-        name: form.name,
-        account_type: form.account_type,
-        credit_limit: Number(form.credit_limit || 0),
-        settlement_cycle: form.settlement_cycle,
-        status: form.status,
-        is_credit_enabled: form.is_credit_enabled === "1",
-        requires_approval: false,
-      };
-      return editing ? updateCreditAccount(editing.id, payload) : createCreditAccount(payload);
-    },
-    onSuccess: () => {
-      toast.success(editing ? "Credit account updated" : "Credit account created");
-      setOpen(false);
-      setEditing(null);
-      setForm(emptyForm);
-      queryClient.invalidateQueries({ queryKey: ["credit-accounts-page"] });
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to save credit account"),
-  });
-
-  const toggleMutation = useMutation({
-    mutationFn: toggleCreditAccount,
-    onSuccess: () => {
-      toast.success("Credit account status updated");
-      queryClient.invalidateQueries({ queryKey: ["credit-accounts-page"] });
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to update account"),
-  });
+  const saving = createMutation.isPending || updateMutation.isPending;
 
   const totals = useMemo(() => {
-    const active = rows.filter((row) => row.status === "active" && Boolean(row.is_credit_enabled)).length;
-    const blocked = rows.filter((row) => row.status === "blocked" || !Boolean(row.is_credit_enabled)).length;
+    const active = rows.filter((row) => String(row.status ?? "active") === "active" && isEnabled(row.is_credit_enabled)).length;
+    const blocked = rows.filter((row) => String(row.status ?? "active") === "blocked" || !isEnabled(row.is_credit_enabled)).length;
     const limit = rows.reduce((sum, row) => sum + Number(row.credit_limit ?? 0), 0);
     const balance = rows.reduce((sum, row) => sum + Number(row.current_balance ?? 0), 0);
-    return { active, blocked, limit, balance };
+    return { active, blocked, limit, balance, available: Math.max(0, limit - balance) };
   }, [rows]);
 
   const updateFilter = (patch: Partial<typeof filters>) => setFilters((current) => ({ ...current, ...patch, page: 1 }));
@@ -152,16 +117,50 @@ export default function CreditAccountsPage() {
     setOpen(true);
   }
 
+  function closeForm() {
+    setOpen(false);
+    setEditing(null);
+    setForm(emptyForm);
+  }
+
   function submit() {
-    if (!form.name.trim()) {
+    const payload = payloadFromForm(form);
+
+    if (!payload.name) {
       toast.error("Account name is required");
       return;
     }
-    if (Number(form.credit_limit) < 0) {
+
+    if (Number.isNaN(payload.credit_limit) || Number(payload.credit_limit) < 0) {
       toast.error("Credit limit cannot be negative");
       return;
     }
-    saveMutation.mutate();
+
+    if (editing) {
+      updateMutation.mutate(
+        { id: editing.id, payload },
+        {
+          onSuccess: () => {
+            toast.success("Credit account updated");
+            closeForm();
+          },
+          onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to update credit account"),
+        },
+      );
+      return;
+    }
+
+    createMutation.mutate(payload, {
+      onSuccess: () => toast.success("Credit account created"),
+      onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create credit account"),
+    });
+  }
+
+  function toggleAccount(account: CreditAccount) {
+    toggleMutation.mutate(account.id, {
+      onSuccess: () => toast.success("Credit account status updated"),
+      onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to update account status"),
+    });
   }
 
   return (
@@ -169,10 +168,13 @@ export default function CreditAccountsPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Credit Accounts</h1>
-          <p className="text-muted-foreground">Create and manage customer, staff, student, and organization credit accounts used during cashier credit orders.</p>
+          <p className="text-muted-foreground">
+            Create customer, staff, student, and organization credit accounts for cashier credit orders.
+          </p>
         </div>
         <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> New credit account
+          <Plus className="mr-2 h-4 w-4" />
+          New credit account
         </Button>
       </div>
 
@@ -180,7 +182,7 @@ export default function CreditAccountsPage() {
         <Card className="rounded-2xl"><CardHeader><CardDescription>Active accounts</CardDescription><CardTitle>{totals.active}</CardTitle></CardHeader></Card>
         <Card className="rounded-2xl"><CardHeader><CardDescription>Blocked / disabled</CardDescription><CardTitle>{totals.blocked}</CardTitle></CardHeader></Card>
         <Card className="rounded-2xl"><CardHeader><CardDescription>Total credit limit</CardDescription><CardTitle>{money(totals.limit)}</CardTitle></CardHeader></Card>
-        <Card className="rounded-2xl"><CardHeader><CardDescription>Outstanding balance</CardDescription><CardTitle>{money(totals.balance)}</CardTitle></CardHeader></Card>
+        <Card className="rounded-2xl"><CardHeader><CardDescription>Available credit</CardDescription><CardTitle>{money(totals.available)}</CardTitle></CardHeader></Card>
       </div>
 
       <Card className="rounded-2xl">
@@ -197,18 +199,14 @@ export default function CreditAccountsPage() {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All types</SelectItem>
-                <SelectItem value="customer">Customer</SelectItem>
-                <SelectItem value="organization">Organization</SelectItem>
-                <SelectItem value="staff">Staff</SelectItem>
-                <SelectItem value="student">Student</SelectItem>
+                {accountTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={filters.status} onValueChange={(status) => updateFilter({ status })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="blocked">Blocked</SelectItem>
+                {accountStatuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
               </SelectContent>
             </Select>
             <Button variant="outline" onClick={() => setFilters({ page: 1, per_page: 10, search: "", account_type: "all", status: "all" })}>Reset filters</Button>
@@ -219,56 +217,77 @@ export default function CreditAccountsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Limit</TableHead><TableHead>Balance</TableHead><TableHead>Available</TableHead><TableHead>Cycle</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Limit</TableHead>
+                  <TableHead>Balance</TableHead>
+                  <TableHead>Available</TableHead>
+                  <TableHead>Cycle</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {query.isLoading ? <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">Loading credit accounts...</TableCell></TableRow> : rows.length ? rows.map((account) => {
+                {query.isLoading ? (
+                  <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">Loading credit accounts...</TableCell></TableRow>
+                ) : rows.length ? rows.map((account) => {
                   const limit = Number(account.credit_limit ?? 0);
                   const balance = Number(account.current_balance ?? 0);
-                  const available = Math.max(0, limit - balance);
-                  const organization = isOrganizationAccount(account);
+                  const available = Number(account.remaining_limit ?? Math.max(0, limit - balance));
                   return (
                     <TableRow key={account.id}>
                       <TableCell><div className="font-medium">{account.name}</div><div className="text-xs text-muted-foreground">Created {date(account.created_at)}</div></TableCell>
                       <TableCell className="capitalize">{String(account.account_type ?? "—")}</TableCell>
-                      <TableCell>{money(limit)}</TableCell><TableCell>{money(balance)}</TableCell><TableCell>{money(available)}</TableCell>
+                      <TableCell>{money(limit)}</TableCell>
+                      <TableCell>{money(balance)}</TableCell>
+                      <TableCell>{money(available)}</TableCell>
                       <TableCell className="capitalize">{account.settlement_cycle ?? "monthly"}</TableCell>
-                      <TableCell><Badge variant={account.status === "active" ? "outline" : "destructive"} className="capitalize">{account.status ?? "active"}</Badge><div className="text-xs text-muted-foreground">{account.is_credit_enabled ? "Credit enabled" : "Credit disabled"}</div></TableCell>
+                      <TableCell>
+                        <Badge variant={String(account.status ?? "active") === "active" ? "outline" : "destructive"} className="capitalize">{account.status ?? "active"}</Badge>
+                        <div className="text-xs text-muted-foreground">{isEnabled(account.is_credit_enabled) ? "Credit enabled" : "Credit disabled"}</div>
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu modal={false}>
                           <DropdownMenuTrigger asChild><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => openEdit(account)}><Edit className="mr-2 h-4 w-4" /> Edit account</DropdownMenuItem>
-                            {organization && <DropdownMenuItem asChild><Link href={`/dashboard/credit-accounts/${account.id}`}><Users className="mr-2 h-4 w-4" /> Manage authorized users</Link></DropdownMenuItem>}
-                            <DropdownMenuItem onClick={() => toggleMutation.mutate(account.id)}>{account.status === "blocked" || !account.is_credit_enabled ? "Unblock / enable" : "Block / disable"}</DropdownMenuItem>
+                            {isOrganizationAccount(account) && <DropdownMenuItem asChild><Link href={`/dashboard/order-management/credit-accounts/${account.id}`}><Users className="mr-2 h-4 w-4" /> Manage authorized users</Link></DropdownMenuItem>}
+                            <DropdownMenuItem disabled={toggleMutation.isPending} onClick={() => toggleAccount(account)}>{String(account.status) === "blocked" || !isEnabled(account.is_credit_enabled) ? "Unblock / enable" : "Block / disable"}</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   );
-                }) : <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">No credit accounts found. Create one to allow credit orders.</TableCell></TableRow>}
+                }) : (
+                  <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">No credit accounts found. Create one to allow credit orders.</TableCell></TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
-          <div className="mt-4 flex items-center justify-between"><p className="text-sm text-muted-foreground">Page {meta?.current_page ?? 1} of {meta?.last_page ?? 1}</p><div className="flex gap-2"><Button variant="outline" disabled={(meta?.current_page ?? 1) <= 1} onClick={() => setFilters({ ...filters, page: Math.max(1, filters.page - 1) })}>Previous</Button><Button variant="outline" disabled={(meta?.current_page ?? 1) >= (meta?.last_page ?? 1)} onClick={() => setFilters({ ...filters, page: filters.page + 1 })}>Next</Button></div></div>
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">Page {meta?.current_page ?? 1} of {meta?.last_page ?? 1}</p>
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={(meta?.current_page ?? 1) <= 1} onClick={() => setFilters({ ...filters, page: Math.max(1, filters.page - 1) })}>Previous</Button>
+              <Button variant="outline" disabled={(meta?.current_page ?? 1) >= (meta?.last_page ?? 1)} onClick={() => setFilters({ ...filters, page: filters.page + 1 })}>Next</Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(value) => (value ? setOpen(true) : closeForm())}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>{editing ? "Edit credit account" : "Create credit account"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2"><Label>Account name</Label><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Example: Municipality, ICT Department" /></div>
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2"><Label>Account type</Label><Select value={form.account_type} onValueChange={(account_type) => setForm({ ...form, account_type })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="customer">Customer</SelectItem><SelectItem value="organization">Organization</SelectItem><SelectItem value="staff">Staff</SelectItem><SelectItem value="student">Student</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label>Account type</Label><Select value={form.account_type} onValueChange={(account_type) => setForm({ ...form, account_type })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{accountTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-2"><Label>Credit limit</Label><Input type="number" min="0" value={form.credit_limit} onChange={(event) => setForm({ ...form, credit_limit: event.target.value })} /></div>
-              <div className="space-y-2"><Label>Settlement cycle</Label><Select value={form.settlement_cycle} onValueChange={(settlement_cycle) => setForm({ ...form, settlement_cycle })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="daily">Daily</SelectItem><SelectItem value="weekly">Weekly</SelectItem><SelectItem value="monthly">Monthly</SelectItem></SelectContent></Select></div>
-              <div className="space-y-2"><Label>Status</Label><Select value={form.status} onValueChange={(status) => setForm({ ...form, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Active</SelectItem><SelectItem value="blocked">Blocked</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label>Settlement cycle</Label><Select value={form.settlement_cycle} onValueChange={(settlement_cycle) => setForm({ ...form, settlement_cycle })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{settlementCycles.map((cycle) => <SelectItem key={cycle} value={cycle}>{cycle}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2"><Label>Status</Label><Select value={form.status} onValueChange={(status) => setForm({ ...form, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{accountStatuses.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-2"><Label>Credit enabled</Label><Select value={form.is_credit_enabled} onValueChange={(is_credit_enabled) => setForm({ ...form, is_credit_enabled })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="1">Yes</SelectItem><SelectItem value="0">No</SelectItem></SelectContent></Select></div>
-              <div className="space-y-2"><Label>Requires approval</Label><Select value={form.requires_approval} onValueChange={(requires_approval) => setForm({ ...form, requires_approval })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="0">No</SelectItem></SelectContent></Select></div>
+              <div className="space-y-2"><Label>Requires approval</Label><Select value={form.requires_approval} onValueChange={(requires_approval) => setForm({ ...form, requires_approval })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="0">No</SelectItem><SelectItem value="1">Yes</SelectItem></SelectContent></Select></div>
             </div>
-            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button disabled={saveMutation.isPending} onClick={submit}>{editing ? "Update account" : "Save account"}</Button></div>
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={closeForm}>Cancel</Button><Button disabled={saving} onClick={submit}>{editing ? "Update account" : "Save account"}</Button></div>
           </div>
         </DialogContent>
       </Dialog>
