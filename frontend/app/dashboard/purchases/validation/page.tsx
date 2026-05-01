@@ -1,5 +1,5 @@
-import { PurchaseValidationPage } from "@/components/inventory-management/procurement-pages";
+import { PurchaseValidationConfirmPage } from "@/components/inventory-management/purchase-validation-confirm-page";
 
 export default function Page() {
-  return <PurchaseValidationPage />;
+  return <PurchaseValidationConfirmPage />;
 }
