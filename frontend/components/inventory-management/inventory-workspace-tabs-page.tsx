@@ -1,5 +1,6 @@
 "use client";
 
+import { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,9 +8,17 @@ import { InventoryItemsSiPage } from "@/components/inventory-management/inventor
 import { InventoryReportPage } from "@/components/inventory-management/inventory-pages";
 import { PurchaseValidationConfirmPage } from "@/components/inventory-management/purchase-validation-confirm-page";
 import { RecipesTabPage } from "@/components/inventory-management/recipes-tab-page";
+import { usePermissions, inventoryPermissions, purchasePermissions } from "@/lib/auth/permissions";
 import { procurementService } from "@/services/inventory-management/procurement.service";
 
 type Scope = "admin" | "food-controller" | "stock-keeper";
+
+type WorkspaceTab = {
+  value: string;
+  label: ReactNode;
+  content: ReactNode;
+  show: boolean;
+};
 
 function CountBadge({ value }: { value?: number }) {
   if (!value || value < 1) return null;
@@ -22,54 +31,94 @@ function CountBadge({ value }: { value?: number }) {
 }
 
 export function InventoryWorkspaceTabsPage({ scope = "food-controller" }: { scope?: Scope }) {
+  const { can, canAny } = usePermissions();
+
+  const canSeePurchaseValidation = canAny([
+    inventoryPermissions.recipeIntegrity,
+    purchasePermissions.ordersApprove,
+    purchasePermissions.ordersRead,
+  ]);
+
   const purchaseValidationCount = useQuery({
     queryKey: ["inventory-tabs", "purchase-validation-count", "submitted"],
     queryFn: () => procurementService.purchaseOrders({ status: "submitted", per_page: 1 }, "food-controller"),
+    enabled: canSeePurchaseValidation,
     staleTime: 30000,
     retry: false,
   });
 
   const pendingPurchaseValidations = purchaseValidationCount.data?.meta.total ?? 0;
 
+  const tabs: WorkspaceTab[] = [
+    {
+      value: "items",
+      label: "Inventory Items",
+      show: can(inventoryPermissions.read),
+      content: <InventoryItemsSiPage scope={scope} />,
+    },
+    {
+      value: "recipes",
+      label: "Recipes",
+      show: can(inventoryPermissions.recipesRead),
+      content: <RecipesTabPage scope={scope} />,
+    },
+    {
+      value: "low-stock",
+      label: "Low Stock",
+      show: can(inventoryPermissions.lowStock),
+      content: <InventoryReportPage type="low-stock" />,
+    },
+    {
+      value: "valuation",
+      label: "Stock Valuation",
+      show: can(inventoryPermissions.valuation),
+      content: <InventoryReportPage type="valuation" />,
+    },
+    {
+      value: "recipe-integrity",
+      label: "Recipe Integrity",
+      show: can(inventoryPermissions.recipeIntegrity),
+      content: <InventoryReportPage type="recipe-integrity" />,
+    },
+    {
+      value: "purchase-validation",
+      label: (
+        <>
+          Purchase Validation
+          <CountBadge value={pendingPurchaseValidations} />
+        </>
+      ),
+      show: canSeePurchaseValidation,
+      content: <PurchaseValidationConfirmPage />,
+    },
+  ].filter((tab) => tab.show);
+
+  const defaultTab = tabs[0]?.value ?? "items";
+
+  if (!tabs.length) {
+    return (
+      <div className="rounded-xl border border-dashed p-8 text-center">
+        <p className="font-medium">No inventory access</p>
+        <p className="mt-1 text-sm text-muted-foreground">Your role does not have permission to view this inventory workspace.</p>
+      </div>
+    );
+  }
+
   return (
-    <Tabs defaultValue="items" className="space-y-4">
+    <Tabs defaultValue={defaultTab} className="space-y-4">
       <div className="overflow-x-auto pb-1">
         <TabsList className="inline-flex min-w-max">
-          <TabsTrigger value="items">Inventory Items</TabsTrigger>
-          <TabsTrigger value="recipes">Recipes</TabsTrigger>
-          <TabsTrigger value="low-stock">Low Stock</TabsTrigger>
-          <TabsTrigger value="valuation">Stock Valuation</TabsTrigger>
-          <TabsTrigger value="recipe-integrity">Recipe Integrity</TabsTrigger>
-          <TabsTrigger value="purchase-validation">
-            Purchase Validation
-            <CountBadge value={pendingPurchaseValidations} />
-          </TabsTrigger>
+          {tabs.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
+          ))}
         </TabsList>
       </div>
 
-      <TabsContent value="items" className="mt-0">
-        <InventoryItemsSiPage scope={scope} />
-      </TabsContent>
-
-      <TabsContent value="recipes" className="mt-0">
-        <RecipesTabPage scope={scope} />
-      </TabsContent>
-
-      <TabsContent value="low-stock" className="mt-0">
-        <InventoryReportPage type="low-stock" />
-      </TabsContent>
-
-      <TabsContent value="valuation" className="mt-0">
-        <InventoryReportPage type="valuation" />
-      </TabsContent>
-
-      <TabsContent value="recipe-integrity" className="mt-0">
-        <InventoryReportPage type="recipe-integrity" />
-      </TabsContent>
-
-      <TabsContent value="purchase-validation" className="mt-0">
-        <PurchaseValidationConfirmPage />
-      </TabsContent>
+      {tabs.map((tab) => (
+        <TabsContent key={tab.value} value={tab.value} className="mt-0">
+          {tab.content}
+        </TabsContent>
+      ))}
     </Tabs>
   );
 }
