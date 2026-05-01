@@ -1,4 +1,4 @@
-export type BaseUnit = "kg" | "L" | "pcs";
+export type BaseUnit = "g" | "ml" | "pc";
 export type InventoryTransactionType = "in" | "out" | "adjust" | "transfer_in" | "transfer_out" | "waste";
 
 export interface ApiEnvelope<T> {
@@ -76,7 +76,7 @@ export interface InventoryBatch {
   remaining_qty: number;
   expiry_date?: string | null;
   received_at?: string | null;
-  status?: "active" | "empty" | "expired" | string | null;
+  status?: "active" | "empty" | "depleted" | "available" | "expired" | string | null;
   inventory_item?: InventoryItem;
   inventoryItem?: InventoryItem;
 }
@@ -89,6 +89,7 @@ export interface InventoryTransaction {
   quantity: number;
   unit_cost?: number | null;
   note?: string | null;
+  reason?: string | null;
   reference_type?: string | null;
   reference_id?: number | string | null;
   created_at?: string | null;
