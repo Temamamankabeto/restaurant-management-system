@@ -4,8 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { InventoryItemsSiPage } from "@/components/inventory-management/inventory-items-si-page";
-import { InventoryReportPage, RecipesPage } from "@/components/inventory-management/inventory-pages";
+import { InventoryReportPage } from "@/components/inventory-management/inventory-pages";
 import { PurchaseValidationConfirmPage } from "@/components/inventory-management/purchase-validation-confirm-page";
+import { RecipesTabPage } from "@/components/inventory-management/recipes-tab-page";
 import { procurementService } from "@/services/inventory-management/procurement.service";
 
 type Scope = "admin" | "food-controller" | "stock-keeper";
@@ -49,18 +50,23 @@ export function InventoryWorkspaceTabsPage({ scope = "food-controller" }: { scop
       <TabsContent value="items" className="mt-0">
         <InventoryItemsSiPage scope={scope} />
       </TabsContent>
+
       <TabsContent value="recipes" className="mt-0">
-        <RecipesPage scope="food-controller" />
+        <RecipesTabPage scope={scope} />
       </TabsContent>
+
       <TabsContent value="low-stock" className="mt-0">
         <InventoryReportPage type="low-stock" />
       </TabsContent>
+
       <TabsContent value="valuation" className="mt-0">
         <InventoryReportPage type="valuation" />
       </TabsContent>
+
       <TabsContent value="recipe-integrity" className="mt-0">
         <InventoryReportPage type="recipe-integrity" />
       </TabsContent>
+
       <TabsContent value="purchase-validation" className="mt-0">
         <PurchaseValidationConfirmPage />
       </TabsContent>
