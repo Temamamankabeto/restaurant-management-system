@@ -1,7 +1,8 @@
 import api from "@/lib/api";
+import { authService } from "@/services/auth/auth.service";
 import type { InventoryListParams } from "@/types/inventory-management";
 
-export type ProcurementScope = "admin" | "food-controller";
+export type ProcurementScope = "auto" | "admin" | "food-controller" | "purchaser" | "stock-keeper";
 
 export interface SupplierRow {
   id: number;
@@ -90,8 +91,35 @@ function cleanParams(params: Record<string, unknown> = {}) {
   return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== "" && value !== "all"));
 }
 
-function rolePrefix(scope: ProcurementScope = "admin") {
-  return scope === "food-controller" ? "/food-controller" : "/admin";
+function normalizeRole(value?: string | null) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[\s-]+/g, "_");
+}
+
+function detectedScope(): Exclude<ProcurementScope, "auto"> {
+  const roles = authService.getStoredRoles().map(normalizeRole);
+
+  if (roles.some((role) => ["general_admin", "admin", "administrator"].includes(role))) return "admin";
+  if (roles.includes("purchaser") || roles.includes("purchase") || roles.includes("procurement_officer")) return "purchaser";
+  if (roles.includes("store_keeper") || roles.includes("stock_keeper") || roles.includes("warehouse")) return "stock-keeper";
+  if (roles.includes("fandb_controller") || roles.includes("food_controller") || roles.includes("food_and_beverage_controller") || roles.includes("f_and_b_controller")) return "food-controller";
+
+  return "admin";
+}
+
+function resolveScope(scope: ProcurementScope = "auto"): Exclude<ProcurementScope, "auto"> {
+  return scope === "auto" ? detectedScope() : scope;
+}
+
+function rolePrefix(scope: ProcurementScope = "auto") {
+  const resolved = resolveScope(scope);
+  if (resolved === "food-controller") return "/food-controller";
+  if (resolved === "purchaser") return "/purchaser";
+  if (resolved === "stock-keeper") return "/stock-keeper";
+  return "/admin";
 }
 
 function paginated<T>(body: any): PaginatedLike<T> {
@@ -117,32 +145,32 @@ function unwrap<T>(body: any): T {
 }
 
 export const procurementService = {
-  async suppliers(params: InventoryListParams = {}, scope: ProcurementScope = "admin") {
+  async suppliers(params: InventoryListParams = {}, scope: ProcurementScope = "auto") {
     const response = await api.get(`${rolePrefix(scope)}/suppliers`, { params: cleanParams(params as Record<string, unknown>) });
     return paginated<SupplierRow>(response.data);
   },
 
-  async createSupplier(payload: SupplierPayload, scope: ProcurementScope = "admin") {
+  async createSupplier(payload: SupplierPayload, scope: ProcurementScope = "auto") {
     const response = await api.post(`${rolePrefix(scope)}/suppliers`, payload);
     return unwrap<SupplierRow>(response.data);
   },
 
-  async purchaseOrders(params: InventoryListParams & { status?: string; supplier_id?: number | string } = {}, scope: ProcurementScope = "admin") {
+  async purchaseOrders(params: InventoryListParams & { status?: string; supplier_id?: number | string } = {}, scope: ProcurementScope = "auto") {
     const response = await api.get(`${rolePrefix(scope)}/purchase-orders`, { params: cleanParams(params as Record<string, unknown>) });
     return paginated<PurchaseOrderRow>(response.data);
   },
 
-  async purchaseOrder(id: number | string, scope: ProcurementScope = "admin") {
+  async purchaseOrder(id: number | string, scope: ProcurementScope = "auto") {
     const response = await api.get(`${rolePrefix(scope)}/purchase-orders/${id}`);
     return unwrap<PurchaseOrderRow>(response.data);
   },
 
-  async createPurchaseOrder(payload: PurchaseOrderPayload, scope: ProcurementScope = "admin") {
+  async createPurchaseOrder(payload: PurchaseOrderPayload, scope: ProcurementScope = "auto") {
     const response = await api.post(`${rolePrefix(scope)}/purchase-orders`, payload);
     return unwrap<PurchaseOrderRow>(response.data);
   },
 
-  async submitPurchaseOrder(id: number | string, scope: ProcurementScope = "admin") {
+  async submitPurchaseOrder(id: number | string, scope: ProcurementScope = "auto") {
     const response = await api.post(`${rolePrefix(scope)}/purchase-orders/${id}/submit`);
     return unwrap<PurchaseOrderRow>(response.data);
   },
@@ -167,12 +195,12 @@ export const procurementService = {
     return unwrap<PurchaseOrderRow>(response.data);
   },
 
-  async stockReceivings(params: InventoryListParams & { purchase_order_id?: number | string; supplier_id?: number | string } = {}, scope: ProcurementScope = "admin") {
+  async stockReceivings(params: InventoryListParams & { purchase_order_id?: number | string; supplier_id?: number | string } = {}, scope: ProcurementScope = "auto") {
     const response = await api.get(`${rolePrefix(scope)}/stock-receivings`, { params: cleanParams(params as Record<string, unknown>) });
     return paginated<any>(response.data);
   },
 
-  async receivePurchaseOrder(id: number | string, payload: ReceiveOrderPayload, scope: ProcurementScope = "admin") {
+  async receivePurchaseOrder(id: number | string, payload: ReceiveOrderPayload, scope: ProcurementScope = "auto") {
     const response = await api.post(`${rolePrefix(scope)}/purchase-orders/${id}/receive`, payload);
     return unwrap<{ receiving: unknown; po: PurchaseOrderRow }>(response.data);
   },

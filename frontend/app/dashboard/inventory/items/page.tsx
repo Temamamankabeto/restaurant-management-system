@@ -1,2 +1,5 @@
-import { InventoryItemsPage } from "@/components/inventory-management/inventory-pages";
-export default function Page() { return <InventoryItemsPage />; }
+import { InventoryItemsSiPage } from '@/components/inventory-management/inventory-items-si-page';
+
+export default function Page() {
+  return <InventoryItemsSiPage />;
+}
