@@ -143,6 +143,11 @@ export const inventoryService = {
     return paginated<InventoryItem>(response.data);
   },
 
+  async trashedItems(params: InventoryListParams = {}, roleScope: InventoryRoleScope = "food-controller") {
+    const response = await api.get(`${rolePrefix(roleScope)}/inventory/items/trashed`, { params: cleanParams(params) });
+    return paginated<InventoryItem>(response.data);
+  },
+
   async item(id: number | string, roleScope: InventoryRoleScope = "admin") {
     const response = await api.get(`${rolePrefix(roleScope)}/inventory/items/${id}`);
     return unwrap<ApiEnvelope<InventoryItem>>(response).data;
@@ -160,6 +165,16 @@ export const inventoryService = {
 
   async deleteItem(id: number | string, roleScope: InventoryRoleScope = "admin") {
     const response = await api.delete(`${rolePrefix(roleScope)}/inventory/items/${id}`);
+    return unwrap<ApiEnvelope<null>>(response);
+  },
+
+  async restoreItem(id: number | string, roleScope: InventoryRoleScope = "food-controller") {
+    const response = await api.post(`${rolePrefix(roleScope)}/inventory/items/${id}/restore`);
+    return unwrap<ApiEnvelope<InventoryItem>>(response);
+  },
+
+  async forceDeleteItem(id: number | string, roleScope: InventoryRoleScope = "food-controller") {
+    const response = await api.delete(`${rolePrefix(roleScope)}/inventory/items/${id}/force`);
     return unwrap<ApiEnvelope<null>>(response);
   },
 
@@ -217,6 +232,21 @@ export const inventoryService = {
   async lowStock(roleScope: InventoryRoleScope = "food-controller") {
     const response = await api.get(`${rolePrefix(roleScope)}/reports/low-stock`);
     return extractListFromKeys<LowStockRow>(response.data, ["items", "low_stock", "rows"]);
+  },
+
+  async reorderSuggestions(roleScope: InventoryRoleScope = "food-controller") {
+    const response = await api.get(`${rolePrefix(roleScope)}/reports/reorder-suggestions`);
+    return extractListFromKeys<any>(response.data, ["items", "suggestions", "rows", "data"]);
+  },
+
+  async expiredItems(roleScope: InventoryRoleScope = "food-controller") {
+    const response = await api.get(`${rolePrefix(roleScope)}/reports/expired-items`);
+    return extractListFromKeys<any>(response.data, ["items", "expired_items", "batches", "rows", "data"]);
+  },
+
+  async receivingHistory(params: InventoryListParams & { supplier_id?: number | string; purchase_order_id?: number | string } = {}, roleScope: InventoryRoleScope = "food-controller") {
+    const response = await api.get(`${rolePrefix(roleScope)}/reports/receiving-history`, { params: cleanParams(params) });
+    return paginated<any>(response.data);
   },
 
   async stockValuation(roleScope: InventoryRoleScope = "food-controller") {
