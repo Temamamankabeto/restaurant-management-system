@@ -21,4 +21,5 @@ export {
   useWasteInventoryItem as useRecordWasteMutation,
   useTransferInventoryItem as useTransferStockMutation,
   useCreateRecipe as useCreateRecipeMutation,
+  useUpdateRecipe as useUpdateRecipeMutation,
 } from "./useInventory";

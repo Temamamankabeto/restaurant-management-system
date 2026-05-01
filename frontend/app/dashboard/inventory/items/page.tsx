@@ -1,5 +1,5 @@
-import { InventoryItemsSiPage } from '@/components/inventory-management/inventory-items-si-page';
+import { InventoryWorkspaceTabsPage } from '@/components/inventory-management/inventory-workspace-tabs-page';
 
 export default function Page() {
-  return <InventoryItemsSiPage />;
+  return <InventoryWorkspaceTabsPage />;
 }

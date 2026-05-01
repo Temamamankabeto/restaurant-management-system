@@ -17,12 +17,31 @@ class InventoryReportController extends Controller
         }
 
         $rows = InventoryItem::with('batches')
+            ->where('is_active', true)
+            ->whereColumn('current_stock', '<=', 'minimum_quantity')
             ->orderBy('current_stock')
             ->get()
-            ->filter(fn ($item) => $item->stock_status === 'low_stock')
+            ->map(function ($item) {
+                $current = (float) $item->current_stock;
+                $minimum = (float) $item->minimum_quantity;
+
+                $item->low_stock_level = ($minimum > 0 && $current <= ($minimum * 0.5)) ? 'critical' : 'warning';
+                $item->shortage = max($minimum - $current, 0);
+                $item->shortage_percent = $minimum > 0 ? round(($item->shortage / $minimum) * 100, 2) : 0;
+
+                return $item;
+            })
             ->values();
 
-        return response()->json(['success' => true, 'data' => $rows]);
+        return response()->json([
+            'success' => true,
+            'data' => $rows,
+            'summary' => [
+                'total' => $rows->count(),
+                'critical' => $rows->where('low_stock_level', 'critical')->count(),
+                'warning' => $rows->where('low_stock_level', 'warning')->count(),
+            ],
+        ]);
     }
 
     public function reorderSuggestions(Request $request)
