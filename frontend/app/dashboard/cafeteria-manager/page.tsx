@@ -2,47 +2,41 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, BarChart3, Boxes, ClipboardCheck, ClipboardList, Package, PackageSearch, Warehouse } from "lucide-react";
+import { ClipboardCheck, Package, ShoppingCart, Utensils, CreditCard, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { procurementService } from "@/services/inventory-management/procurement.service";
 
-const inventoryCards = [
+const moduleCards = [
   {
-    title: "Inventory Overview",
-    description: "Open stock summary, latest movements, low-stock risk, and valuation snapshot.",
-    href: "/dashboard/inventory/overview",
-    icon: Warehouse,
-  },
-  {
-    title: "Inventory Items",
-    description: "View and manage all stock items using base SI units: g, ml, and pc.",
-    href: "/dashboard/inventory/items",
+    title: "Inventory Module",
+    description: "Open manager inventory screen for stock overview, items, movements, valuation, low stock, and recipe integrity.",
+    href: "/dashboard/cafeteria-manager/inventory",
     icon: Package,
   },
   {
-    title: "Stock Movements",
-    description: "Review stock in, out, adjustment, transfer, and waste transaction history.",
-    href: "/dashboard/inventory/movements",
-    icon: ClipboardList,
+    title: "Menu Module",
+    description: "Menu overview and manager actions will be added here later.",
+    href: "/dashboard/modules/menu",
+    icon: Utensils,
   },
   {
-    title: "Stock Valuation",
-    description: "Analyze inventory value by item with manager valuation report.",
-    href: "/dashboard/inventory/valuation",
+    title: "Order Module",
+    description: "Order overview and manager actions will be added here later.",
+    href: "/dashboard/orders",
+    icon: ShoppingCart,
+  },
+  {
+    title: "Payment Module",
+    description: "Payment and billing overview will be added here later.",
+    href: "/dashboard/modules/payments",
+    icon: CreditCard,
+  },
+  {
+    title: "Reports Module",
+    description: "Operational and financial reports will be expanded here later.",
+    href: "/dashboard/modules/reports",
     icon: BarChart3,
-  },
-  {
-    title: "Low Stock",
-    description: "See items below minimum quantity and shortage priority.",
-    href: "/dashboard/inventory/low-stock",
-    icon: AlertTriangle,
-  },
-  {
-    title: "Recipe Integrity",
-    description: "Check missing recipes, missing inventory links, and menu tracking issues.",
-    href: "/dashboard/inventory/recipe-integrity",
-    icon: PackageSearch,
   },
 ];
 
@@ -60,7 +54,7 @@ export default function CafeteriaManagerDashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Cafeteria Manager Dashboard</h1>
-        <p className="text-muted-foreground">Operations, purchase review, inventory oversight, and reports.</p>
+        <p className="text-muted-foreground">Main control center for manager modules. Open each module screen from the cards below.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -80,7 +74,7 @@ export default function CafeteriaManagerDashboardPage() {
           </CardContent>
         </Card>
 
-        {inventoryCards.map((item) => {
+        {moduleCards.map((item) => {
           const Icon = item.icon;
           return (
             <Card key={item.href} className="rounded-2xl transition hover:border-primary/50 hover:shadow-md">
@@ -98,20 +92,6 @@ export default function CafeteriaManagerDashboardPage() {
           );
         })}
       </div>
-
-      <Card className="rounded-2xl">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Boxes className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>Admin / Manager Inventory Module</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Use the cards above to access every manager inventory screen: overview, item list, movements, valuation, low-stock report, and recipe integrity report.
-          </p>
-        </CardContent>
-      </Card>
     </div>
   );
 }
