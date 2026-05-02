@@ -239,18 +239,31 @@ class PublicCreditCardOrderController extends Controller
         $accountId = null;
         $authorizedUserId = null;
 
-        if (preg_match('/credit-account\s*:\s*([^;\s]+)/i', $text, $match)) {
-            $accountId = $match[1];
+        if (preg_match('/credit-account\s*:\s*(\d+)/i', $text, $match)) {
+            $accountId = (int) $match[1];
         }
-        if (preg_match('/authorized-user\s*:\s*([^;\s]+)/i', $text, $match)) {
-            $authorizedUserId = $match[1];
+        if (preg_match('/authorized-user\s*:\s*(\d+)/i', $text, $match)) {
+            $authorizedUserId = (int) $match[1];
         }
-        if (!$accountId && preg_match('/owner\s*:\s*([^;\s]+)/i', $text, $match)) {
-            $accountId = $match[1];
+        if (!$accountId && preg_match('/owner\s*:\s*(\d+)/i', $text, $match)) {
+            $accountId = (int) $match[1];
         }
-        if (!$accountId && str_starts_with(strtoupper($text), 'CR-')) {
-            $digits = preg_replace('/\D+/', '', $text);
-            $accountId = $digits ? (int) ltrim($digits, '0') : null;
+        if (!$accountId && !$authorizedUserId && preg_match('/CR-\d{4}-\d{4}-(\d+)/i', $text, $match)) {
+            $id = (int) ltrim($match[1], '0');
+            $user = CreditAccountUser::find($id);
+            if ($user) {
+                return [
+                    'credit_account_id' => (int) $user->credit_account_id,
+                    'authorized_user_id' => (int) $user->id,
+                ];
+            }
+            $account = CreditAccount::find($id);
+            if ($account) {
+                return [
+                    'credit_account_id' => (int) $account->id,
+                    'authorized_user_id' => null,
+                ];
+            }
         }
 
         return [
