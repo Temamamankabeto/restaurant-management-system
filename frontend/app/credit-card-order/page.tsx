@@ -10,6 +10,81 @@ import { Input } from "@/components/ui/input";
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
 const url = (path: string) => `${API_BASE}${path}`;
 
+function money(value: unknown) {
+  return Number(value || 0).toFixed(2);
+}
+
+function PrintableAigBill({ receipt, cardNumber, validated }: { receipt: any; cardNumber: string; validated: any }) {
+  const items = receipt?.items || [];
+  const subtotal = items.reduce((sum: number, item: any) => sum + Number(item.line_total || 0), 0);
+  const total = Number(receipt?.total || 0);
+  const taxAndService = Math.max(0, total - subtotal);
+  const dateText = new Date().toLocaleString();
+
+  return (
+    <Card className="print:border-0 print:shadow-none">
+      <CardContent className="mx-auto max-w-sm space-y-3 p-6 font-mono text-xs print:max-w-[80mm] print:p-0">
+        <div className="text-center">
+          <h2 className="text-lg font-bold tracking-wide">AIG CAFETERIA</h2>
+          <p>Adama Investment Group</p>
+          <p className="font-semibold">CREDIT ORDER RECEIPT</p>
+        </div>
+
+        <div className="border-t border-dashed pt-2">
+          <div className="flex justify-between"><span>Order No</span><strong>{receipt?.order_number || "-"}</strong></div>
+          <div className="flex justify-between"><span>Bill No</span><strong>{receipt?.bill_number || "-"}</strong></div>
+          <div className="flex justify-between"><span>Date</span><span>{dateText}</span></div>
+          <div className="flex justify-between"><span>Payment</span><strong>CREDIT</strong></div>
+        </div>
+
+        <div className="border-t border-dashed pt-2">
+          <p><strong>Account:</strong> {receipt?.account?.name || validated?.account?.name || "-"}</p>
+          <p><strong>User:</strong> {validated?.authorized_user?.full_name || "Account holder"}</p>
+          <p><strong>Card:</strong> {cardNumber}</p>
+        </div>
+
+        <div className="border-t border-dashed pt-2">
+          <div className="grid grid-cols-[1fr_35px_60px_65px] gap-1 font-bold">
+            <span>Item</span><span className="text-right">Qty</span><span className="text-right">Price</span><span className="text-right">Total</span>
+          </div>
+          {items.map((item: any, index: number) => (
+            <div key={index} className="grid grid-cols-[1fr_35px_60px_65px] gap-1">
+              <span className="truncate">{item.name}</span>
+              <span className="text-right">{Number(item.quantity || 0)}</span>
+              <span className="text-right">{money(item.unit_price)}</span>
+              <span className="text-right">{money(item.line_total)}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-dashed pt-2">
+          <div className="flex justify-between"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
+          <div className="flex justify-between"><span>Tax/Service</span><strong>{money(taxAndService)}</strong></div>
+          <div className="flex justify-between text-base"><span>TOTAL</span><strong>{money(total)} ETB</strong></div>
+          <div className="flex justify-between"><span>Remaining Credit</span><strong>{money(receipt?.account?.remaining_limit)}</strong></div>
+        </div>
+
+        <div className="border-t border-dashed pt-2">
+          <p className="font-bold">Tickets</p>
+          {receipt?.tickets?.length ? receipt.tickets.map((ticket: any, index: number) => (
+            <p key={index}>{ticket.ticket_number || `TICKET-${index + 1}`} · {ticket.station || "station"} · {ticket.item_name || "item"}</p>
+          )) : <p>-</p>}
+        </div>
+
+        <div className="border-t border-dashed pt-2 text-center">
+          <p><strong>Estimated Preparation:</strong> {receipt?.preparation_estimate_minutes || 15} minutes</p>
+          <p className="mt-2">Thank you!</p>
+          <p>AIG Cafeteria POS System</p>
+        </div>
+
+        <div className="flex justify-center pt-3 print:hidden">
+          <Button onClick={() => window.print()}>Print bill</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function CreditCardOrderPage() {
   const [cardNumber, setCardNumber] = useState("");
   const [message, setMessage] = useState("");
@@ -126,18 +201,7 @@ export default function CreditCardOrderPage() {
           </Card>
         </div>}
 
-        {receipt && <Card className="print:border-0 print:shadow-none">
-          <CardHeader className="text-center"><CardTitle>Printable Credit Bill</CardTitle><CardDescription>Order submitted successfully.</CardDescription></CardHeader>
-          <CardContent className="mx-auto max-w-xl space-y-3 text-sm">
-            <p><strong>Order No:</strong> {receipt.order_number}</p>
-            <p><strong>Bill No:</strong> {receipt.bill_number || "-"}</p>
-            <p><strong>Preparation time:</strong> {receipt.preparation_estimate_minutes || 15} minutes</p>
-            <p><strong>Total:</strong> {Number(receipt.total || 0).toFixed(2)}</p>
-            <p><strong>Remaining credit:</strong> {Number(receipt.account?.remaining_limit || 0).toFixed(2)}</p>
-            <div><strong>Tickets:</strong>{receipt.tickets?.map((t: any, i: number) => <p key={i}>{t.ticket_number} - {t.station} - {t.item_name}</p>)}</div>
-            <Button className="print:hidden" onClick={() => window.print()}>Print bill</Button>
-          </CardContent>
-        </Card>}
+        {receipt && <PrintableAigBill receipt={receipt} cardNumber={cardNumber} validated={validated} />}
       </div>
     </main>
   );
