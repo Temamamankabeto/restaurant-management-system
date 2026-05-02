@@ -16,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import type { ApiEnvelope, CreditAccount, CreditAccountPayload, CreditAccountUser, CreditAccountUserPayload, PaginatedResponse } from "@/types/order-management";
 
 function money(value: unknown) { return Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -26,7 +25,7 @@ function active(value: unknown) { return value === true || value === 1 || value 
 function isOrganization(account?: CreditAccount | null) { return String(account?.account_type ?? "").toLowerCase() === "organization"; }
 function accountAvailable(account?: CreditAccount | null) { const limit = Number(account?.credit_limit ?? 0); const balance = Number(account?.current_balance ?? 0); return Number(account?.remaining_limit ?? Math.max(0, limit - balance)); }
 function accountNo(accountId: string | number) { const raw = String(accountId).replace(/\D/g, "").padStart(12, "0").slice(-12); return `CR-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`; }
-function userCardNo(accountId: string | number, userId: string | number) { const raw = `${accountId}${userId}`.replace(/\D/g, "").padStart(12, "0").slice(-12); return `CR-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`; }
+function userCardNo(_accountId: string | number, userId: string | number) { const raw = String(userId).replace(/\D/g, "").padStart(12, "0").slice(-12); return `CR-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`; }
 function hashBits(value: string) { let hash = 0; for (let i = 0; i < value.length; i++) hash = (hash * 31 + value.charCodeAt(i)) >>> 0; return Array.from({ length: 121 }, (_, i) => ((hash >> (i % 24)) + i + hash) % 3 === 0); }
 function SmartCode({ value }: { value: string }) { const bits = hashBits(value); const locator = (i: number) => [0, 1, 2, 10, 11, 21, 22, 32, 88, 99, 108, 109, 110, 120].includes(i); return <div className="grid h-32 w-32 grid-cols-11 gap-0.5 rounded-lg border bg-white p-2">{bits.map((bit, i) => <span key={i} className={(bit || locator(i)) ? "bg-black" : "bg-white"} />)}</div>; }
 
