@@ -61,6 +61,12 @@ export default function LoginPage() {
               Create customer account
             </Link>
           </p>
+
+          <div className="mt-4 text-center">
+            <Link href="/credit-card-order" className="text-blue-600 underline">
+              Credit Card Self-Order Kiosk
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </main>
