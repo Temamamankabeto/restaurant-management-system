@@ -14,74 +14,109 @@ function money(value: unknown) {
   return Number(value || 0).toFixed(2);
 }
 
+function verifyCode(value: string) {
+  const raw = value.replace(/[^A-Za-z0-9]/g, "").slice(-10).padStart(10, "0");
+  return `AIG-${raw}`;
+}
+
+function MiniQr({ value }: { value: string }) {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  const cells = Array.from({ length: 81 }, (_, i) => ((hash >> (i % 20)) + i + hash) % 3 === 0);
+  const locator = (i: number) => [0, 1, 2, 9, 18, 60, 69, 78, 70, 71, 80].includes(i);
+  return <div className="mx-auto grid h-20 w-20 grid-cols-9 gap-px bg-white p-1">{cells.map((on, i) => <span key={i} className={(on || locator(i)) ? "bg-black" : "bg-white"} />)}</div>;
+}
+
 function PrintableAigBill({ receipt, cardNumber, validated }: { receipt: any; cardNumber: string; validated: any }) {
   const items = receipt?.items || [];
   const subtotal = items.reduce((sum: number, item: any) => sum + Number(item.line_total || 0), 0);
   const total = Number(receipt?.total || 0);
   const taxAndService = Math.max(0, total - subtotal);
   const dateText = new Date().toLocaleString();
+  const reference = verifyCode(`${receipt?.order_number || ""}${receipt?.bill_number || ""}${cardNumber}`);
 
   return (
-    <Card className="print:border-0 print:shadow-none">
-      <CardContent className="mx-auto max-w-sm space-y-3 p-6 font-mono text-xs print:max-w-[80mm] print:p-0">
-        <div className="text-center">
-          <h2 className="text-lg font-bold tracking-wide">AIG CAFETERIA</h2>
-          <p>Adama Investment Group</p>
-          <p className="font-semibold">CREDIT ORDER RECEIPT</p>
-        </div>
-
-        <div className="border-t border-dashed pt-2">
-          <div className="flex justify-between"><span>Order No</span><strong>{receipt?.order_number || "-"}</strong></div>
-          <div className="flex justify-between"><span>Bill No</span><strong>{receipt?.bill_number || "-"}</strong></div>
-          <div className="flex justify-between"><span>Date</span><span>{dateText}</span></div>
-          <div className="flex justify-between"><span>Payment</span><strong>CREDIT</strong></div>
-        </div>
-
-        <div className="border-t border-dashed pt-2">
-          <p><strong>Account:</strong> {receipt?.account?.name || validated?.account?.name || "-"}</p>
-          <p><strong>User:</strong> {validated?.authorized_user?.full_name || "Account holder"}</p>
-          <p><strong>Card:</strong> {cardNumber}</p>
-        </div>
-
-        <div className="border-t border-dashed pt-2">
-          <div className="grid grid-cols-[1fr_35px_60px_65px] gap-1 font-bold">
-            <span>Item</span><span className="text-right">Qty</span><span className="text-right">Price</span><span className="text-right">Total</span>
+    <section id="thermal-receipt" className="mx-auto w-full max-w-sm bg-white text-black print:w-[80mm] print:max-w-[80mm]">
+      <style jsx global>{`
+        @media print {
+          @page { size: 80mm auto; margin: 3mm; }
+          html, body { background: white !important; width: 80mm !important; margin: 0 !important; padding: 0 !important; }
+          body * { visibility: hidden !important; }
+          #thermal-receipt, #thermal-receipt * { visibility: visible !important; }
+          #thermal-receipt { position: absolute !important; left: 0 !important; top: 0 !important; width: 74mm !important; max-width: 74mm !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border: 0 !important; }
+          .receipt-no-print { display: none !important; }
+          .receipt-card { border: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
+          .receipt-content { padding: 0 !important; font-size: 10px !important; line-height: 1.25 !important; }
+          .receipt-title { font-size: 14px !important; }
+          .receipt-total { font-size: 12px !important; }
+        }
+      `}</style>
+      <Card className="receipt-card border shadow-sm print:border-0 print:shadow-none">
+        <CardContent className="receipt-content space-y-2 p-4 font-mono text-xs">
+          <div className="text-center">
+            <div className="mx-auto mb-1 flex h-10 w-10 items-center justify-center rounded-full border-2 border-black text-sm font-black">AIG</div>
+            <h2 className="receipt-title text-base font-black tracking-wide">AIG CAFETERIA</h2>
+            <p>Adama Investment Group</p>
+            <p>TIN: __________</p>
+            <p className="font-bold">CREDIT ORDER RECEIPT</p>
           </div>
-          {items.map((item: any, index: number) => (
-            <div key={index} className="grid grid-cols-[1fr_35px_60px_65px] gap-1">
-              <span className="truncate">{item.name}</span>
-              <span className="text-right">{Number(item.quantity || 0)}</span>
-              <span className="text-right">{money(item.unit_price)}</span>
-              <span className="text-right">{money(item.line_total)}</span>
+
+          <div className="border-t border-dashed border-black pt-2">
+            <div className="flex justify-between gap-2"><span>Order No</span><strong className="text-right">{receipt?.order_number || "-"}</strong></div>
+            <div className="flex justify-between gap-2"><span>Bill No</span><strong className="text-right">{receipt?.bill_number || "-"}</strong></div>
+            <div className="flex justify-between gap-2"><span>Date</span><span className="text-right">{dateText}</span></div>
+            <div className="flex justify-between gap-2"><span>Payment</span><strong>CREDIT</strong></div>
+            <div className="flex justify-between gap-2"><span>Ref</span><strong>{reference}</strong></div>
+          </div>
+
+          <div className="border-t border-dashed border-black pt-2">
+            <p><strong>Account:</strong> {receipt?.account?.name || validated?.account?.name || "-"}</p>
+            <p><strong>User:</strong> {validated?.authorized_user?.full_name || "Account holder"}</p>
+            <p><strong>Card:</strong> {cardNumber}</p>
+          </div>
+
+          <div className="border-t border-dashed border-black pt-2">
+            <div className="grid grid-cols-[1fr_24px_48px_54px] gap-1 font-bold">
+              <span>ITEM</span><span className="text-right">Q</span><span className="text-right">PRICE</span><span className="text-right">TOTAL</span>
             </div>
-          ))}
-        </div>
+            {items.map((item: any, index: number) => (
+              <div key={index} className="grid grid-cols-[1fr_24px_48px_54px] gap-1">
+                <span className="truncate">{item.name}</span>
+                <span className="text-right">{Number(item.quantity || 0)}</span>
+                <span className="text-right">{money(item.unit_price)}</span>
+                <span className="text-right">{money(item.line_total)}</span>
+              </div>
+            ))}
+          </div>
 
-        <div className="border-t border-dashed pt-2">
-          <div className="flex justify-between"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
-          <div className="flex justify-between"><span>Tax/Service</span><strong>{money(taxAndService)}</strong></div>
-          <div className="flex justify-between text-base"><span>TOTAL</span><strong>{money(total)} ETB</strong></div>
-          <div className="flex justify-between"><span>Remaining Credit</span><strong>{money(receipt?.account?.remaining_limit)}</strong></div>
-        </div>
+          <div className="border-t border-dashed border-black pt-2">
+            <div className="flex justify-between"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
+            <div className="flex justify-between"><span>Tax/Service</span><strong>{money(taxAndService)}</strong></div>
+            <div className="receipt-total flex justify-between border-t border-black pt-1 text-sm font-black"><span>TOTAL</span><strong>{money(total)} ETB</strong></div>
+            <div className="flex justify-between"><span>Remaining Credit</span><strong>{money(receipt?.account?.remaining_limit)}</strong></div>
+          </div>
 
-        <div className="border-t border-dashed pt-2">
-          <p className="font-bold">Tickets</p>
-          {receipt?.tickets?.length ? receipt.tickets.map((ticket: any, index: number) => (
-            <p key={index}>{ticket.ticket_number || `TICKET-${index + 1}`} · {ticket.station || "station"} · {ticket.item_name || "item"}</p>
-          )) : <p>-</p>}
-        </div>
+          <div className="border-t border-dashed border-black pt-2">
+            <p className="font-bold">Tickets</p>
+            {receipt?.tickets?.length ? receipt.tickets.map((ticket: any, index: number) => (
+              <p key={index}>{ticket.ticket_number || `TICKET-${index + 1}`} / {ticket.station || "station"} / {ticket.item_name || "item"}</p>
+            )) : <p>-</p>}
+          </div>
 
-        <div className="border-t border-dashed pt-2 text-center">
-          <p><strong>Estimated Preparation:</strong> {receipt?.preparation_estimate_minutes || 15} minutes</p>
-          <p className="mt-2">Thank you!</p>
-          <p>AIG Cafeteria POS System</p>
-        </div>
+          <div className="border-t border-dashed border-black pt-2 text-center">
+            <p><strong>Estimated Preparation:</strong> {receipt?.preparation_estimate_minutes || 15} minutes</p>
+            <MiniQr value={reference} />
+            <p className="font-bold">{reference}</p>
+            <p className="mt-1">Thank you!</p>
+            <p>AIG Cafeteria POS System</p>
+          </div>
 
-        <div className="flex justify-center pt-3 print:hidden">
-          <Button onClick={() => window.print()}>Print bill</Button>
-        </div>
-      </CardContent>
-    </Card>
+          <div className="receipt-no-print flex justify-center gap-2 pt-3">
+            <Button onClick={() => window.print()}>Print bill</Button>
+          </div>
+        </CardContent>
+      </Card>
+    </section>
   );
 }
 
@@ -161,8 +196,8 @@ export default function CreditCardOrderPage() {
   }
 
   return (
-    <main className="min-h-screen bg-muted/30 p-4 md:p-6">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <main className="min-h-screen bg-muted/30 p-4 md:p-6 print:bg-white print:p-0">
+      <div className="mx-auto max-w-6xl space-y-6 print:m-0 print:max-w-none print:space-y-0">
         <div className="print:hidden">
           <Button variant="outline" asChild className="mb-3"><Link href="/login">Back to login</Link></Button>
           <h1 className="text-3xl font-bold">Credit Card Self-Order Kiosk</h1>
