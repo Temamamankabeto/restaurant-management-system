@@ -55,6 +55,8 @@ export const queryKeys = {
   credit: {
     root: () => ["credit"] as const,
     accounts: (filters?: unknown) => ["credit", "accounts", filters] as const,
+    account: (id: string | number) => ["credit", "accounts", "detail", id] as const,
+    accountUsers: (id: string | number, filters?: unknown) => ["credit", "accounts", id, "users", filters] as const,
     orders: (filters?: unknown) => ["credit", "orders", filters] as const,
   },
 
