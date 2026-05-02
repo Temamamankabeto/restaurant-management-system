@@ -3,15 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\BarTicket;
 use App\Models\CreditAccount;
 use App\Models\CreditAccountUser;
-use App\Models\KitchenTicket;
+use App\Models\CreditOrder;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Services\WaiterOrderService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class PublicCreditCardOrderController extends Controller
@@ -87,7 +85,10 @@ class PublicCreditCardOrderController extends Controller
         }
 
         $account = CreditAccount::lockForUpdate()->findOrFail($validatedCard['data']['credit_account_id']);
-        $available = round((float) $account->credit_limit - (float) $account->current_balance, 2);
+        $authorizedUser = !empty($validatedCard['data']['credit_account_user_id'])
+            ? CreditAccountUser::find($validatedCard['data']['credit_account_user_id'])
+            : null;
+        $available = $this->availableLimitForCard($account, $authorizedUser);
         $total = $this->calculateTotal($data['items']);
 
         if ($available <= 0) {
@@ -136,7 +137,9 @@ class PublicCreditCardOrderController extends Controller
                 ];
             })->values();
 
-            $remainingAfter = round((float) $account->fresh()->credit_limit - (float) $account->fresh()->current_balance, 2);
+            $freshAccount = $account->fresh();
+            $freshUser = $authorizedUser?->fresh();
+            $remainingAfter = $this->availableLimitForCard($freshAccount, $freshUser);
 
             return response()->json([
                 'success' => true,
@@ -152,8 +155,8 @@ class PublicCreditCardOrderController extends Controller
                     'preparation_estimate_minutes' => $this->estimatePreparationMinutes($order),
                     'tickets' => $ticketNumbers,
                     'account' => [
-                        'id' => $account->id,
-                        'name' => $account->name,
+                        'id' => $freshAccount->id,
+                        'name' => $freshAccount->name,
                         'remaining_limit' => $remainingAfter,
                     ],
                     'items' => $order->items->map(fn ($item) => [
@@ -188,17 +191,16 @@ class PublicCreditCardOrderController extends Controller
             return ['success' => false, 'status_code' => 404, 'message' => 'Credit account card was not found.'];
         }
 
-        $available = round((float) $account->credit_limit - (float) $account->current_balance, 2);
         $isOrganization = strtolower((string) $account->account_type) === 'organization';
         $authorizedUser = null;
 
         if (!$account->is_credit_enabled || $account->status !== 'active') {
-            return ['success' => false, 'status_code' => 422, 'message' => 'Credit account is blocked or credit is disabled.', 'data' => ['account' => $account, 'available_limit' => $available]];
+            return ['success' => false, 'status_code' => 422, 'message' => 'Credit account is blocked or credit is disabled.', 'data' => ['account' => $account, 'available_limit' => 0]];
         }
 
         if ($isOrganization) {
             if (!$parsed['authorized_user_id']) {
-                return ['success' => false, 'status_code' => 422, 'message' => 'Organization card must include an authorized user.', 'data' => ['account' => $account, 'available_limit' => $available]];
+                return ['success' => false, 'status_code' => 422, 'message' => 'Organization card must include an authorized user.', 'data' => ['account' => $account, 'available_limit' => 0]];
             }
 
             $authorizedUser = CreditAccountUser::where('credit_account_id', $account->id)
@@ -210,9 +212,11 @@ class PublicCreditCardOrderController extends Controller
             }
 
             if (!$authorizedUser->is_active) {
-                return ['success' => false, 'status_code' => 422, 'message' => 'Authorized user is disabled for this credit account.', 'data' => ['account' => $account, 'authorized_user' => $authorizedUser, 'available_limit' => $available]];
+                return ['success' => false, 'status_code' => 422, 'message' => 'Authorized user is disabled for this credit account.', 'data' => ['account' => $account, 'authorized_user' => $authorizedUser, 'available_limit' => 0]];
             }
         }
+
+        $available = $this->availableLimitForCard($account, $authorizedUser);
 
         if ($available <= 0) {
             return ['success' => false, 'status_code' => 422, 'message' => 'Credit account available balance is empty. Ask account holder to request additional credit limit.', 'data' => ['account' => $account, 'authorized_user' => $authorizedUser, 'available_limit' => $available]];
@@ -231,6 +235,37 @@ class PublicCreditCardOrderController extends Controller
                 'is_active' => true,
             ],
         ];
+    }
+
+    private function availableLimitForCard(CreditAccount $account, ?CreditAccountUser $authorizedUser = null): float
+    {
+        $accountAvailable = max(0, (float) $account->credit_limit - (float) $account->current_balance);
+
+        if (!$authorizedUser) {
+            return round($accountAvailable, 2);
+        }
+
+        $todayUsed = (float) CreditOrder::where('credit_account_user_id', $authorizedUser->id)
+            ->whereDate('created_at', today())
+            ->whereNotIn('status', ['cancelled', 'rejected', 'void'])
+            ->sum('total_amount');
+
+        $monthUsed = (float) CreditOrder::where('credit_account_user_id', $authorizedUser->id)
+            ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
+            ->whereNotIn('status', ['cancelled', 'rejected', 'void'])
+            ->sum('total_amount');
+
+        $limits = [$accountAvailable];
+
+        if ($authorizedUser->daily_limit !== null && (float) $authorizedUser->daily_limit > 0) {
+            $limits[] = max(0, (float) $authorizedUser->daily_limit - $todayUsed);
+        }
+
+        if ($authorizedUser->monthly_limit !== null && (float) $authorizedUser->monthly_limit > 0) {
+            $limits[] = max(0, (float) $authorizedUser->monthly_limit - $monthUsed);
+        }
+
+        return round(min($limits), 2);
     }
 
     private function parseCard(string $value): array
@@ -253,26 +288,17 @@ class PublicCreditCardOrderController extends Controller
         }
 
         if ($accountId && $authorizedUserId) {
-            return [
-                'credit_account_id' => $accountId,
-                'authorized_user_id' => $authorizedUserId,
-            ];
+            return ['credit_account_id' => $accountId, 'authorized_user_id' => $authorizedUserId];
         }
 
         if ($accountId && !$authorizedUserId) {
-            return [
-                'credit_account_id' => $accountId,
-                'authorized_user_id' => null,
-            ];
+            return ['credit_account_id' => $accountId, 'authorized_user_id' => null];
         }
 
         if ($authorizedUserId && !$accountId) {
             $user = CreditAccountUser::find($authorizedUserId);
             if ($user) {
-                return [
-                    'credit_account_id' => (int) $user->credit_account_id,
-                    'authorized_user_id' => (int) $user->id,
-                ];
+                return ['credit_account_id' => (int) $user->credit_account_id, 'authorized_user_id' => (int) $user->id];
             }
         }
 
@@ -286,26 +312,17 @@ class PublicCreditCardOrderController extends Controller
             if ($id > 0) {
                 $user = CreditAccountUser::find($id);
                 if ($user) {
-                    return [
-                        'credit_account_id' => (int) $user->credit_account_id,
-                        'authorized_user_id' => (int) $user->id,
-                    ];
+                    return ['credit_account_id' => (int) $user->credit_account_id, 'authorized_user_id' => (int) $user->id];
                 }
 
                 $account = CreditAccount::find($id);
                 if ($account) {
-                    return [
-                        'credit_account_id' => (int) $account->id,
-                        'authorized_user_id' => null,
-                    ];
+                    return ['credit_account_id' => (int) $account->id, 'authorized_user_id' => null];
                 }
             }
         }
 
-        return [
-            'credit_account_id' => null,
-            'authorized_user_id' => null,
-        ];
+        return ['credit_account_id' => null, 'authorized_user_id' => null];
     }
 
     private function calculateTotal(array $items): float
