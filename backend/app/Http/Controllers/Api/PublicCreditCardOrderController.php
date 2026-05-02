@@ -88,7 +88,7 @@ class PublicCreditCardOrderController extends Controller
         $authorizedUser = !empty($validatedCard['data']['credit_account_user_id'])
             ? CreditAccountUser::find($validatedCard['data']['credit_account_user_id'])
             : null;
-        $available = $this->availableLimitForCard($account, $authorizedUser);
+        $available = $this->availableLimitForCard($account, $authorizedUser, false);
         $total = $this->calculateTotal($data['items']);
 
         if ($available <= 0) {
@@ -102,7 +102,7 @@ class PublicCreditCardOrderController extends Controller
         if ($total > $available) {
             return response()->json([
                 'success' => false,
-                'message' => 'Credit limit exceeded. Remaining limit: ' . number_format($available, 2),
+                'message' => 'Monthly credit limit exceeded. Remaining limit: ' . number_format($available, 2),
                 'data' => ['available_limit' => $available, 'order_total' => $total],
             ], 422);
         }
@@ -139,7 +139,7 @@ class PublicCreditCardOrderController extends Controller
 
             $freshAccount = $account->fresh();
             $freshUser = $authorizedUser?->fresh();
-            $remainingAfter = $this->availableLimitForCard($freshAccount, $freshUser);
+            $remainingAfter = $this->availableLimitForCard($freshAccount, $freshUser, false);
 
             return response()->json([
                 'success' => true,
@@ -216,10 +216,11 @@ class PublicCreditCardOrderController extends Controller
             }
         }
 
-        $available = $this->availableLimitForCard($account, $authorizedUser);
+        $available = $this->availableLimitForCard($account, $authorizedUser, false);
+        $dailyRemaining = $authorizedUser ? $this->dailyRemainingForUser($authorizedUser) : null;
 
         if ($available <= 0) {
-            return ['success' => false, 'status_code' => 422, 'message' => 'Credit account available balance is empty. Ask account holder to request additional credit limit.', 'data' => ['account' => $account, 'authorized_user' => $authorizedUser, 'available_limit' => $available]];
+            return ['success' => false, 'status_code' => 422, 'message' => 'Monthly credit limit is empty. Ask account holder to request additional credit limit.', 'data' => ['account' => $account, 'authorized_user' => $authorizedUser, 'available_limit' => $available, 'daily_remaining' => $dailyRemaining]];
         }
 
         return [
@@ -231,24 +232,20 @@ class PublicCreditCardOrderController extends Controller
                 'credit_account_id' => $account->id,
                 'credit_account_user_id' => $authorizedUser?->id,
                 'available_limit' => $available,
+                'daily_remaining' => $dailyRemaining,
                 'is_organization' => $isOrganization,
                 'is_active' => true,
             ],
         ];
     }
 
-    private function availableLimitForCard(CreditAccount $account, ?CreditAccountUser $authorizedUser = null): float
+    private function availableLimitForCard(CreditAccount $account, ?CreditAccountUser $authorizedUser = null, bool $enforceDailyLimit = false): float
     {
         $accountAvailable = max(0, (float) $account->credit_limit - (float) $account->current_balance);
 
         if (!$authorizedUser) {
             return round($accountAvailable, 2);
         }
-
-        $todayUsed = (float) CreditOrder::where('credit_account_user_id', $authorizedUser->id)
-            ->whereDate('created_at', today())
-            ->whereNotIn('status', ['cancelled', 'rejected', 'void'])
-            ->sum('total_amount');
 
         $monthUsed = (float) CreditOrder::where('credit_account_user_id', $authorizedUser->id)
             ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
@@ -257,15 +254,29 @@ class PublicCreditCardOrderController extends Controller
 
         $limits = [$accountAvailable];
 
-        if ($authorizedUser->daily_limit !== null && (float) $authorizedUser->daily_limit > 0) {
-            $limits[] = max(0, (float) $authorizedUser->daily_limit - $todayUsed);
-        }
-
         if ($authorizedUser->monthly_limit !== null && (float) $authorizedUser->monthly_limit > 0) {
             $limits[] = max(0, (float) $authorizedUser->monthly_limit - $monthUsed);
         }
 
+        if ($enforceDailyLimit && $authorizedUser->daily_limit !== null && (float) $authorizedUser->daily_limit > 0) {
+            $limits[] = $this->dailyRemainingForUser($authorizedUser);
+        }
+
         return round(min($limits), 2);
+    }
+
+    private function dailyRemainingForUser(CreditAccountUser $authorizedUser): float
+    {
+        if ($authorizedUser->daily_limit === null || (float) $authorizedUser->daily_limit <= 0) {
+            return INF;
+        }
+
+        $todayUsed = (float) CreditOrder::where('credit_account_user_id', $authorizedUser->id)
+            ->whereDate('created_at', today())
+            ->whereNotIn('status', ['cancelled', 'rejected', 'void'])
+            ->sum('total_amount');
+
+        return round(max(0, (float) $authorizedUser->daily_limit - $todayUsed), 2);
     }
 
     private function parseCard(string $value): array
