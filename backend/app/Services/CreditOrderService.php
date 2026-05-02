@@ -21,9 +21,10 @@ class CreditOrderService
         ?string $dueDate = null,
         ?string $notes = null,
         bool $overrideLimit = false,
-        int|array|null $creditAccountUserIds = null
+        int|array|null $creditAccountUserIds = null,
+        bool $allowDailyLimitOverage = false
     ): CreditOrder {
-        return DB::transaction(function () use ($bill, $creditAccountId, $userId, $dueDate, $notes, $overrideLimit, $creditAccountUserIds) {
+        return DB::transaction(function () use ($bill, $creditAccountId, $userId, $dueDate, $notes, $overrideLimit, $creditAccountUserIds, $allowDailyLimitOverage) {
             $bill = Bill::with('order')->lockForUpdate()->findOrFail($bill->id);
             $account = CreditAccount::lockForUpdate()->findOrFail($creditAccountId);
 
@@ -76,7 +77,7 @@ class CreditOrderService
                     : $allocationAmount;
                 $remainingAllocation = round($remainingAllocation - $amount, 2);
 
-                $this->assertAuthorizedUserLimit($authorizedUser, $amount, $overrideLimit);
+                $this->assertAuthorizedUserLimit($authorizedUser, $amount, $overrideLimit, $allowDailyLimitOverage);
                 $allocations[] = [$authorizedUser, $amount];
             }
 
@@ -149,7 +150,7 @@ class CreditOrderService
         });
     }
 
-    private function assertAuthorizedUserLimit(CreditAccountUser $user, float $amount, bool $overrideLimit = false): void
+    private function assertAuthorizedUserLimit(CreditAccountUser $user, float $amount, bool $overrideLimit = false, bool $allowDailyLimitOverage = false): void
     {
         if ($overrideLimit) {
             return;
@@ -167,7 +168,7 @@ class CreditOrderService
             ->whereMonth('created_at', now()->month)
             ->sum('allocated_amount'), 2);
 
-        if ($dailyLimit !== null && $dailyLimit > 0 && round($todayUsage + $amount, 2) > $dailyLimit) {
+        if (!$allowDailyLimitOverage && $dailyLimit !== null && $dailyLimit > 0 && round($todayUsage + $amount, 2) > $dailyLimit) {
             throw new RuntimeException("Daily credit limit exceeded for {$user->full_name}. Limit: " . number_format($dailyLimit, 2) . ', used today: ' . number_format($todayUsage, 2));
         }
 
