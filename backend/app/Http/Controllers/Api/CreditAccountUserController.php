@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CreditAccount;
 use App\Models\CreditAccountUser;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 
 class CreditAccountUserController extends Controller
 {
@@ -22,12 +23,9 @@ class CreditAccountUserController extends Controller
 
     public function index(Request $request, $accountId)
     {
-        // Finance/Admin need credit.accounts.read. Cashier POS can also read authorized users
-        // because cashier needs the list to create an organization credit order.
         $this->requireAnyPermission($request, ['credit.accounts.read', 'credit.orders.create', 'orders.create']);
 
         $account = CreditAccount::findOrFail($accountId);
-
         $query = $account->authorizedUsers()->latest();
 
         if ($request->filled('search')) {
@@ -80,11 +78,19 @@ class CreditAccountUserController extends Controller
             'id_number' => 'nullable|string|max:120',
             'daily_limit' => 'nullable|numeric|min:0',
             'monthly_limit' => 'nullable|numeric|min:0',
+            'pin' => 'nullable|string|min:4|max:12|confirmed',
+            'pin_enabled' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',
         ]);
 
+        if (!empty($data['pin'])) {
+            $data['pin_hash'] = Hash::make($data['pin']);
+        }
+        unset($data['pin'], $data['pin_confirmation']);
+
         $data['credit_account_id'] = $account->id;
         $data['created_by'] = $request->user()->id;
+        $data['pin_enabled'] = $request->has('pin_enabled') ? $request->boolean('pin_enabled') : true;
 
         $user = CreditAccountUser::create($data);
 
@@ -109,8 +115,19 @@ class CreditAccountUserController extends Controller
             'id_number' => 'nullable|string|max:120',
             'daily_limit' => 'nullable|numeric|min:0',
             'monthly_limit' => 'nullable|numeric|min:0',
+            'pin' => 'nullable|string|min:4|max:12|confirmed',
+            'pin_enabled' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',
         ]);
+
+        if (!empty($data['pin'])) {
+            $data['pin_hash'] = Hash::make($data['pin']);
+        }
+        unset($data['pin'], $data['pin_confirmation']);
+
+        if ($request->has('pin_enabled')) {
+            $data['pin_enabled'] = $request->boolean('pin_enabled');
+        }
 
         $user->update($data);
 
