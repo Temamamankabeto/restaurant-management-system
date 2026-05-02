@@ -131,6 +131,9 @@ export default function CreditCardOrderPage() {
 
   const total = cart.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
   const grandTotal = total * 1.15;
+  const dailyRemaining = Number(validated?.daily_remaining ?? 0);
+  const hasDailyLimit = validated?.daily_remaining !== null && validated?.daily_remaining !== undefined && Number.isFinite(dailyRemaining) && dailyRemaining >= 0;
+  const exceedsDailyLimit = Boolean(validated) && hasDailyLimit && grandTotal > dailyRemaining;
 
   async function validateCard() {
     if (!cardNumber.trim()) return toast.error("Enter card number first");
@@ -150,7 +153,7 @@ export default function CreditCardOrderPage() {
         return;
       }
       setValidated(data.data);
-      setMessage(`Available credit: ${Number(data.data.available_limit || 0).toFixed(2)}`);
+      setMessage(`Monthly available credit: ${Number(data.data.available_limit || 0).toFixed(2)}`);
       const menuRes = await fetch(url("/api/public/credit-card/menu"));
       const menuData = await menuRes.json();
       setMenu(Array.isArray(menuData.data) ? menuData.data : []);
@@ -172,7 +175,11 @@ export default function CreditCardOrderPage() {
   async function submitOrder() {
     if (!validated) return toast.error("Validate card first");
     if (!cart.length) return toast.error("Add menu items first");
-    if (grandTotal > Number(validated.available_limit || 0)) return toast.error("Credit amount is not enough");
+    if (grandTotal > Number(validated.available_limit || 0)) return toast.error("Monthly credit limit exceeded");
+    if (exceedsDailyLimit) {
+      const confirmed = window.confirm(`This order exceeds the optional daily limit. Daily remaining is ${dailyRemaining.toFixed(2)} ETB, but this order total is ${grandTotal.toFixed(2)} ETB. Continue and deduct from monthly limit?`);
+      if (!confirmed) return;
+    }
     setLoading(true);
     try {
       const res = await fetch(url("/api/public/credit-card/orders"), {
@@ -205,11 +212,12 @@ export default function CreditCardOrderPage() {
         </div>
 
         <Card className="print:hidden">
-          <CardHeader><CardTitle>1. Validate card</CardTitle><CardDescription>Card must be active and have available credit.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>1. Validate card</CardTitle><CardDescription>Card must be active and have monthly available credit.</CardDescription></CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-[1fr_auto]">
             <Input value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") validateCard(); }} placeholder="Scan or enter card number" />
             <Button onClick={validateCard} disabled={loading}>{loading ? "Please wait..." : "Validate"}</Button>
             {message && <p className="md:col-span-2 text-sm text-muted-foreground">{message}</p>}
+            {validated && hasDailyLimit && <p className="md:col-span-2 text-sm text-muted-foreground">Optional daily remaining: {dailyRemaining.toFixed(2)} ETB</p>}
           </CardContent>
         </Card>
 
@@ -230,7 +238,8 @@ export default function CreditCardOrderPage() {
             <CardContent className="space-y-3">
               {!cart.length && <p className="text-muted-foreground">No items selected.</p>}
               {cart.map((item) => <div key={item.id} className="flex justify-between rounded border p-2"><span>{item.name} x {item.quantity}</span><strong>{(Number(item.price || 0) * item.quantity).toFixed(2)}</strong></div>)}
-              <div className="rounded bg-muted p-3"><div className="flex justify-between"><span>Total with tax/service</span><strong>{grandTotal.toFixed(2)}</strong></div><div className="flex justify-between"><span>Available</span><strong>{Number(validated.available_limit || 0).toFixed(2)}</strong></div></div>
+              <div className="rounded bg-muted p-3"><div className="flex justify-between"><span>Total with tax/service</span><strong>{grandTotal.toFixed(2)}</strong></div><div className="flex justify-between"><span>Monthly available</span><strong>{Number(validated.available_limit || 0).toFixed(2)}</strong></div>{hasDailyLimit && <div className="flex justify-between"><span>Optional daily remaining</span><strong>{dailyRemaining.toFixed(2)}</strong></div>}</div>
+              {exceedsDailyLimit && <p className="text-sm text-amber-700">This order is above the optional daily limit. You can continue only after confirming.</p>}
               <Button className="w-full" onClick={submitOrder} disabled={loading || !cart.length || grandTotal > Number(validated.available_limit || 0)}>Submit credit order</Button>
             </CardContent>
           </Card>
