@@ -236,39 +236,75 @@ class PublicCreditCardOrderController extends Controller
     private function parseCard(string $value): array
     {
         $text = trim($value);
+        $digitsOnly = preg_replace('/\D+/', '', $text);
         $accountId = null;
         $authorizedUserId = null;
 
         if (preg_match('/credit-account\s*:\s*(\d+)/i', $text, $match)) {
             $accountId = (int) $match[1];
         }
+
         if (preg_match('/authorized-user\s*:\s*(\d+)/i', $text, $match)) {
             $authorizedUserId = (int) $match[1];
         }
+
         if (!$accountId && preg_match('/owner\s*:\s*(\d+)/i', $text, $match)) {
             $accountId = (int) $match[1];
         }
-        if (!$accountId && !$authorizedUserId && preg_match('/CR-\d{4}-\d{4}-(\d+)/i', $text, $match)) {
-            $id = (int) ltrim($match[1], '0');
-            $user = CreditAccountUser::find($id);
+
+        if ($accountId && $authorizedUserId) {
+            return [
+                'credit_account_id' => $accountId,
+                'authorized_user_id' => $authorizedUserId,
+            ];
+        }
+
+        if ($accountId && !$authorizedUserId) {
+            return [
+                'credit_account_id' => $accountId,
+                'authorized_user_id' => null,
+            ];
+        }
+
+        if ($authorizedUserId && !$accountId) {
+            $user = CreditAccountUser::find($authorizedUserId);
             if ($user) {
                 return [
                     'credit_account_id' => (int) $user->credit_account_id,
                     'authorized_user_id' => (int) $user->id,
                 ];
             }
-            $account = CreditAccount::find($id);
-            if ($account) {
-                return [
-                    'credit_account_id' => (int) $account->id,
-                    'authorized_user_id' => null,
-                ];
+        }
+
+        if (preg_match('/CR-\d{4}-\d{4}-(\d+)/i', $text, $match)) {
+            $digitsOnly = $match[1];
+        }
+
+        if ($digitsOnly !== '') {
+            $id = (int) ltrim($digitsOnly, '0');
+
+            if ($id > 0) {
+                $user = CreditAccountUser::find($id);
+                if ($user) {
+                    return [
+                        'credit_account_id' => (int) $user->credit_account_id,
+                        'authorized_user_id' => (int) $user->id,
+                    ];
+                }
+
+                $account = CreditAccount::find($id);
+                if ($account) {
+                    return [
+                        'credit_account_id' => (int) $account->id,
+                        'authorized_user_id' => null,
+                    ];
+                }
             }
         }
 
         return [
-            'credit_account_id' => $accountId ? (int) $accountId : null,
-            'authorized_user_id' => $authorizedUserId ? (int) $authorizedUserId : null,
+            'credit_account_id' => null,
+            'authorized_user_id' => null,
         ];
     }
 
